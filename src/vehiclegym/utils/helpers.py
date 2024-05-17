@@ -287,7 +287,7 @@ def json2dataclass(dataclass_type, filename: str, relpath: str):
     """
     # get file name and path
     path = DATAPATH + os.sep + 'parameter' + os.sep + relpath
-    filename_abs = path + os.sep + filename
+    filename_abs = path  + filename
 
     # Opening JSON file
     with open(filename_abs) as f:

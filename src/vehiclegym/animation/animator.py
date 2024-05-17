@@ -1,12 +1,9 @@
-import pickle
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import datetime
 import io
 from enum import Enum, auto
 from typing import TYPE_CHECKING, List, Tuple
 import matplotlib as mpl
-import numpy as np
 import seaborn as sns
 from PIL import Image
 
@@ -16,7 +13,6 @@ from vehiclegym.utils.helpers import FrozenClass, latexify
 from vehiclegym.animation.animation_helper import *
 from vehiclegym.plotting.plotters import plot_road, plot_road_f
 from vehiclegym.road.road import Road
-from vehiclegym.simulator.simulation_datastructures import RacingSimulationData
 from vehiclegym.planner.trajectory_planner_base import PlanningDataContainer
 
 if TYPE_CHECKING:
