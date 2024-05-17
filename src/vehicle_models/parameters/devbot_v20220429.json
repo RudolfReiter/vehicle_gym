@@ -1,0 +1,30 @@
+{
+  "length_front": 1.6,
+  "length_rear": 1.4,
+  "chassis_width": 1.9,
+  "chassis_length": 4,
+  "mass": 1160,
+  "maximum_velocity": 60,
+  "maximum_steering_rate": 0.39,
+  "maximum_steering_angle": 0.35,
+  "wheel_radius_rear": 0.36504639,
+  "wheel_radius_front": 0.32606304,
+  "inertia": 1160,
+  "blend_factor": 10,
+  "blend_offset": 5,
+  "f_drive_max": 7000,
+  "f_brake_max": 20000,
+  "tires": {
+    "c_lin": 78480,
+    "B": 10.0,
+    "C": 2.5,
+    "mu": 1
+  },
+  "drive": {
+    "c_rolling": 0,
+    "c_air": 0.013,
+    "k_brake_r": 0.4,
+    "factor_pressure2force_rear": 0.0007793221842297908,
+    "factor_pressure2force_front": 0.0008724961590249542
+  }
+}

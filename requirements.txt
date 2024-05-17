@@ -1,0 +1,14 @@
+numpy>=1.17.4
+setuptools>=68.1
+scikit-build>=0.17
+cmake>=3.27
+seaborn~=0.11.2
+matplotlib>=3.4.2
+scipy>=1.6.2
+omegaconf>=2.1.1
+casadi>=3.5.5
+dataclasses_json
+get_project_root
+pandas
+traitlets
+commonroad-vehicle-models
