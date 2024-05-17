@@ -1,0 +1,44 @@
+{
+        "n_nodes": 50,
+        "time_disc": 0.1,
+        "max_iter": 5000,
+        "v_max_terminal_set": 10,
+        "w_bound_slack_l1":  1e7,
+        "w_obst_slack_l1":  0,
+        "w_acc_slack_l2":  2e6,
+        "w_bound_slack_l2": 1e7,
+        "w_obst_slack_l2":  1e7,
+        "debug_mode": true,
+        "n_circles_ego": 1,
+        "n_circles_opp": 1,
+        "panos_logmaxepx": 0.1,
+        "increase_opp": 0.00,
+        "auto_size_circles": false,
+        "obstacle_model": 1,
+        "use_lifting": false,
+        "deactivate_obstacle_avoidance": false,
+        "distance_obstacle_awareness": 0.0,
+        "use_cython": false,
+        "condensing_relative": 0.2,
+        "qp_tolerance": 1e-06,
+        "time_stretch_fac": 0.0,
+        "velocity_set": 40,
+        "q0": [
+        100,
+        5.0,
+        10.0,
+        150.0,
+        10000000.0
+        ],
+        "r0": [
+        0.001,
+        20000000.0
+        ],
+        "qn": [
+        100.0,
+        0.9,
+        100.0,
+        1000.0,
+        10.0
+        ]
+}

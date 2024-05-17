@@ -1,0 +1,20 @@
+{
+    "length_front": 1.6,
+    "length_rear": 1.4,
+    "chassis_width": 1.9,
+    "chassis_length": 4,
+    "mass": 600,
+    "maximum_velocity": 70,
+    "maximum_steering_rate": 0.39,
+    "maximum_steering_angle": 0.35,
+    "maximum_acceleration_force": 11000.0,
+    "maximum_deceleration_force": 27000.0,
+    "maximum_lateral_acc": 20,
+    "maximum_alpha": 0.7853981633974483,
+    "safety_radius": 2,
+    "safety_radius_length": 6,
+    "safety_radius_boundary": 2,
+    "roll_force_coeff": 0.015,
+    "drag_force_coeff": 0.29,
+    "drag_area_head": 2.07
+}
