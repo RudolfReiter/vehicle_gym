@@ -1,6 +1,6 @@
 
 # Vehicle Gym
-This environment collects functions that are often needed when vehicle simulations are used. It contains basic solvers, vehicle models, and Frenet transformation tools.
+This environment collects functions that are often needed when vehicle simulations are used. It contains essential solvers, vehicle models, and Frenet transformation tools. The following animation shows a simulation of five competing vehicles with different set speeds.
 
 ![til](./animation1.gif)
 
@@ -20,7 +20,7 @@ Make sure to install the acados-Python interface:
 ```
 pip install -e <acados_dir>/interfaces/acados_template
 ```
-Remember to set external paths. In PyCharm this can be done under "edit configurations" -> "environment variables":
+Remember to set external paths. In PyCharm, this can be done under "edit configurations" -> "environment variables":
 - ACADOS_SOURCE_DIR=/dir/to/acados (e.g.,: /home/rudolf/acados)
 - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/dir/to/acados/lib (e.g.: /home/rudolf/acados/lib)
 
@@ -40,3 +40,8 @@ CommonRoad Simulator on a random race track:
 ```
 python tests/planner_tests/simulator/racetrack.py
 ```
+
+## Examples
+Let's examine other simulations involving five competing vehicles identical to the simulation above but with different road parameters.
+![til](./animation2.gif)
+![til](./animation3.gif)
