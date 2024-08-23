@@ -14,7 +14,7 @@ pip3 install -e .
 ```
 
 ### acados
-First, install the [@acados core]([https://website-name.com](https://docs.acados.org/installation/index.html)). 
+First, install the @acados core: [acados](https://docs.acados.org/installation/index.html)). 
 Make sure to install the acados-Python interface:
 ```
 pip install -e <acados_dir>/interfaces/acados_template
