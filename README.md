@@ -2,6 +2,7 @@
 # Vehicle Gym
 This environment collects functions that are often needed when vehicle simulations are used. It contains basic solvers, vehicle models, and Frenet transformation tools.
 
+[](https://github.com/RudolfReiter/vehicle_gym/animation1.gif)
 
 ## Authors
 - [@RudolfReiter](https://www.github.com/RudolfReiter)
