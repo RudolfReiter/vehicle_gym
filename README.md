@@ -1,6 +1,18 @@
-
 # Vehicle Gym
 This environment collects functions that are often needed when vehicle simulations are used. It contains essential solvers, vehicle models, and Frenet transformation tools. The following animation shows a simulation of five competing vehicles with different set speeds.
+
+If you use this repository for your research, please cite:
+```
+@inproceedings{reiter_hierarchical_2023,
+	title = {A Hierarchical Approach for Strategic Motion Planning in Autonomous Racing},
+	doi = {10.23919/ECC57647.2023.10178143},
+	booktitle = {European Control Conference ({ECC})},
+	author = {Reiter, Rudolf and Hoffmann, Jasper and Boedecker, Joschka and Diehl, Moritz},
+	month = jun,
+	year = {2023},
+	pages = {1--8},
+}
+```
 
 ![til](./animation1.gif)
 
