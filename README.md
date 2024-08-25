@@ -54,6 +54,8 @@ python tests/planner_tests/simulator/racetrack.py
 ```
 
 ## Examples
+The following animation shows part of a simulated race on the Spielberg race track involving three MPC competing agents with various strengths. Predictions, as seen in the ego vehicle of other race cars, are plotted in red. The planned ego trajectory is plotted in a color map from blue to green, where the color corresponds to the predicted time.
+![til](./animation4.gif)
 Let's examine other simulations involving five competing vehicles identical to the simulation above but with different road parameters.
 ![til](./animation2.gif)
 ![til](./animation3.gif)
