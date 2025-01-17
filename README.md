@@ -19,16 +19,27 @@ If you use this repository for your research, please cite:
 ## Authors
 - [@RudolfReiter](https://www.github.com/RudolfReiter)
 
-
 ## Installation
+Clone project
+```
+git clone https://github.com/RudolfReiter/vehicle_gym.git
+```
+
+Create virtual environment
+```
+python3 -m venv venv
+source venv/bin/activate
+```
+
+Install requirements 
 ```
 pip3 install -r requirements.txt
 pip3 install -e .
 ```
 
 ### acados
-First, install the [acados core](https://docs.acados.org/installation/index.html). 
-Make sure to install the acados-Python interface:
+First, install acados according to the [acados installation instructions](https://docs.acados.org/installation/index.html). 
+Make sure to install the acados-Python interface accoring to [acados interface setup](https://docs.acados.org/python_interface/index.html):
 ```
 pip install -e <acados_dir>/interfaces/acados_template
 ```
@@ -36,6 +47,8 @@ Remember to set external paths. In PyCharm, this can be done under "edit configu
 - ACADOS_SOURCE_DIR=/dir/to/acados (e.g.,: /home/rudolf/acados)
 - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/dir/to/acados/lib (e.g.: /home/rudolf/acados/lib)
 
+### acados beta version (optional)
+For the globalization scripts, install the preliminary acados version from [David Kiessling's repository](https://github.com/david0oo/acados/tree/byrd_omojokun_development):
 
 ### Tests
 Multi-agent tests on figure eight track, race track, or random track:
@@ -50,7 +63,11 @@ python tests/planner_tests/single_agent/racetrack.py
 ```
 CommonRoad Simulator on a random race track:
 ```
-python tests/planner_tests/simulator/racetrack.py
+python tests/simulator/racetrack_cr.py
+```
+Globalized Fast Trajectory Planner (G-FAT) (Requires acados beta version)
+```
+python tests/planner_tests/globalization/racetracks.py
 ```
 
 ## Examples

@@ -69,30 +69,30 @@ class PlannerOptions(FrozenClass):
 @dataclass
 class PlanningData:
     """ Data for the animation. Each field should be of shape (n_states, n_trajectory_states, overall_iterations)"""
-    x: np.ndarray = np.array([])
-    u: np.ndarray = np.array([])
-    x_opp_predicted: np.ndarray = np.array([])
-    x_opp_predicted_all: List = field(default_factory=lambda: [])
-    t: np.ndarray = np.array([])
-    slacks2: np.ndarray = np.array([])
-    slacks1: np.ndarray = np.array([])
+    x: np.ndarray = field(default_factory=lambda:np.array([]))
+    u: np.ndarray = field(default_factory=lambda:np.array([]))
+    x_opp_predicted: np.ndarray = field(default_factory=lambda:np.array([]))
+    x_opp_predicted_all: list = field(default_factory=[])
+    t: np.ndarray = field(default_factory=lambda:np.array([]))
+    slacks2: np.ndarray = field(default_factory=lambda:np.array([]))
+    slacks1: np.ndarray = field(default_factory=lambda:np.array([]))
+    a_q_matrix: np.ndarray = field(default_factory=lambda:np.array([]))
     a_cost_ds: float = 0
     a_cost_dn: float = 0
-    a_q_matrix: np.ndarray = np.ndarray([])
 
 
 @dataclass
 class PlanningDataContainer:
-    x: np.ndarray = np.array([])
-    u: np.ndarray = np.array([])
-    x_opp_predicted: np.ndarray = np.array([])
-    x_opp_predicted_all: List = field(default_factory=lambda: [])
-    t: np.ndarray = np.array([])
-    x_flat: np.ndarray = np.array([])
-    u_flat: np.ndarray = np.array([])
-    t_flat: np.ndarray = np.array([])
-    slacks2: np.ndarray = np.array([])
-    slacks1: np.ndarray = np.array([])
+    x: np.ndarray = field(default_factory=lambda:np.array([]))
+    u: np.ndarray = field(default_factory=lambda:np.array([]))
+    x_opp_predicted: np.ndarray = field(default_factory=lambda:np.array([]))
+    x_opp_predicted_all: List = field(default_factory=lambda:[])
+    t: np.ndarray = field(default_factory=lambda:np.array([]))
+    x_flat: np.ndarray = field(default_factory=lambda:np.array([]))
+    u_flat: np.ndarray = field(default_factory=lambda:np.array([]))
+    t_flat: np.ndarray = field(default_factory=lambda:np.array([]))
+    slacks2: np.ndarray = field(default_factory=lambda:np.array([]))
+    slacks1: np.ndarray = field(default_factory=lambda:np.array([]))
     n_trajectory_states_truncated: float = 0
 
     def add(self, planning_data: PlanningData):
@@ -154,7 +154,7 @@ class Planner(ABC):
         self.current_slack = None
 
     def get_formatted_solution(self, t0: float = 0) -> PlanningData:
-        data = PlanningData()
+        data = PlanningData
         data.x = copy(self.x_full)
         data.u = copy(self.u_full)
         data.x_opp_predicted = copy(self.x_opp_prediction)

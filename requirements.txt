@@ -12,3 +12,4 @@ get_project_root
 pandas
 traitlets
 commonroad-vehicle-models
+PyQt5

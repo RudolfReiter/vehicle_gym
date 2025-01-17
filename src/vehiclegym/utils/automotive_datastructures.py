@@ -2,17 +2,17 @@ from copy import deepcopy
 from typing import Optional, Type
 
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from scipy import interpolate
 
 
 @dataclass
 class CartesianTrajectory:
-    x: np.ndarray = np.zeros((1,))
-    y: np.ndarray = np.zeros((1,))
-    phi: np.ndarray = np.zeros((1,))
-    v: np.ndarray = np.zeros((1,))
-    delta: np.ndarray = np.zeros((1,))
+    x: np.ndarray = field(default_factory=np.zeros((1,)))
+    y: np.ndarray = field(default_factory=np.zeros((1,)))
+    phi: np.ndarray = field(default_factory=np.zeros((1,)))
+    v: np.ndarray = field(default_factory=np.zeros((1,)))
+    delta: np.ndarray = field(default_factory=np.zeros((1,)))
 
     def __init__(self, trajectory: np.ndarray = None):
         if trajectory is not None:
@@ -40,12 +40,12 @@ class CartesianTrajectory:
 
 @dataclass
 class FrenetTrajectory:
-    s: np.ndarray = np.zeros((1,))
-    n: np.ndarray = np.zeros((1,))
-    alpha: np.ndarray = np.zeros((1,))
-    v: np.ndarray = np.zeros((1,))
-    delta: np.ndarray = np.zeros((1,))
-    t: np.ndarray = np.zeros((1,))
+    s: np.ndarray = field(default_factory=np.zeros((1,)))
+    n: np.ndarray = field(default_factory=np.zeros((1,)))
+    alpha: np.ndarray = field(default_factory=np.zeros((1,)))
+    v: np.ndarray = field(default_factory=np.zeros((1,)))
+    delta: np.ndarray = field(default_factory=np.zeros((1,)))
+    t: np.ndarray = field(default_factory=np.zeros((1,)))
 
     def __init__(self, trajectory: np.ndarray = None, t: np.ndarray = np.zeros((1,))):
         if trajectory is not None:

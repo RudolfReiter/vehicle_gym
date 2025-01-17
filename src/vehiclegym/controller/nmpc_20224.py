@@ -1,6 +1,6 @@
 import math
 from copy import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import casadi as cs
 import numpy as np
 import scipy
@@ -16,9 +16,9 @@ from vehicle_models.model_kinematic_cartesian import KinematicModelCartesianSmal
 class NmpcOptions20224:
     n_nodes: int = 30  # Time steps for optimization horizon
     t_prediction: float = 3
-    weight_inputs: np.ndarray = np.array([1e-5, 5e5])
-    weight_states: np.ndarray = np.array([1e1, 1e1, 1e-4, 0])
-    weight_states_end: np.ndarray = np.array([1e0, 1e0, 1e-1, 0])
+    weight_inputs: np.ndarray = field(default_factory=lambda:np.array([1e-5, 5e5]))
+    weight_states: np.ndarray =field(default_factory=lambda:np.array([1e1, 1e1, 1e-4, 0]))
+    weight_states_end: np.ndarray = field(default_factory=lambda:np.array([1e0, 1e0, 1e-1, 0]))
 
     def get_sampling_time(self) -> float:
         return self.t_prediction / self.n_nodes
