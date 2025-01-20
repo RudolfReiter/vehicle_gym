@@ -57,6 +57,8 @@ class PlannerOptions(FrozenClass):
     qp_tolerance: float = 1e-6
     obstacle_increase_per_sec: float = 0.0
     time_stretch_fac: float = 0.00
+    nlp_solver: str = "SQP_RTI"
+    nlp_solver_max_iter: int = 100
 
     q0: List = None
     r0: List = None

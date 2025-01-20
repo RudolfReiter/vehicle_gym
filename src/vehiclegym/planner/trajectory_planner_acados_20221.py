@@ -233,11 +233,11 @@ class VehiclePlannerAcados20221(Planner):
         ocp.solver_options.tol = (
             planner_options.qp_tolerance
         )  # 1e-2 is default, in RTI relevant for QP solution
-        ocp.solver_options.nlp_solver_type = "SQP_RTI"  # SQP_RTI
+        ocp.solver_options.nlp_solver_type = planner_options.nlp_solver  # SQP_RTI
+        ocp.solver_options.nlp_solver_max_iter = planner_options.nlp_solver_max_iter
         ocp.solver_options.hessian_approx = "GAUSS_NEWTON"  # "GAUSS_NEWTON"  # "EXACT"
         ocp.solver_options.integrator_type = "IRK"
         # ocp.solver_options.exact_hess_constr = 0
-        ocp.solver_options.nlp_solver_max_iter = 1
         ocp.solver_options.sim_method_num_stages = 1
         ocp.solver_options.sim_method_num_steps = 2
         ocp.solver_options.time_steps = get_time_steps(

@@ -49,6 +49,73 @@ class BaseSimulator(ABC):
                                                              time_disc=td, cov_matrix=self.options.sim_cov_matrix))
 
 
+
+class PlannerEvaluator:
+    def __init__(self,
+                 initial_states: List[np.ndarray],
+                 planners: List[VehiclePlannerAcados20221],
+                 road: Road,
+                 n_eval:int,
+                 delta_s:float):
+        self.planners = planners
+        self.road = road
+        self.current_states = initial_states
+        self.planning_containers = []
+        self.n_eval = n_eval
+        self.delta_s = delta_s
+        for i in range(len(self.planners)):
+            self.planning_containers.append(PlanningDataContainer())
+
+    def set_road(self, road: Road):
+        for planner in self.planners:
+            planner.set_road(s_grid=road.s_grid_,
+                             kappa_grid=road.kappa_grid_,
+                             nl_grid=road.nl_grid_,
+                             nr_grid=road.nr_grid_)
+
+    def evaluate(self):
+        states = self.current_states
+        res_timings = []
+        res_status4_counter = 0
+        res_maximum_distances = []
+        planning_datas = []
+        for i in range(self.n_eval):
+            t_current = i
+
+            for i_planner, [planner, container] in enumerate(zip(self.planners, self.planning_containers)):
+                planner.reset_solver()
+                for state in states:
+                    state[0] += self.delta_s
+                ego_state = states[i_planner]
+                other_states = states[:i_planner] + states[i_planner + 1:]
+                planner.set_states(states_ego=ego_state,
+                                   states_opp=other_states,
+                                   t_current=t_current)
+                solver_success = True
+                try:
+                    planner.solve()
+                except Exception as e:
+                    solver_success = False
+                    print(e)
+                    res_status4_counter += 1
+
+                for status in planner.last_status:
+                    if status == 4:
+                        solver_success = False
+                        res_status4_counter += 1
+
+                # get timings
+                time_iter = planner.solver.get_stats("time_tot")
+                res_timings.append(time_iter)
+
+                solution = planner.get_formatted_solution(t0=t_current)
+                traj_x = deepcopy(solution.x)
+                if solver_success:
+                    planning_datas.append(traj_x)
+                if solver_success:
+                    res_maximum_distances.append(traj_x[0, -1].item() - traj_x[0, 0].item())
+        return res_timings, res_status4_counter, res_maximum_distances, planning_datas
+
 class SimpleSimulator(BaseSimulator):
     def __init__(self,
                  options: SimulatorOptions,
@@ -167,11 +234,7 @@ class SimpleSimulator(BaseSimulator):
                 t_start = time.time()
                 # set initial states
                 local_states = deepcopy(self.current_states)
-                # for i_state, state in enumerate(local_states):
-                # c_state = self.road.transform_trajectory_f2c(FrenetTrajectory(state))
-                # f_state = self.road.transform_trajectory_c2f(c_state, initial_guess_s=state[0])
-                # f_state = self.road.transform_trajectory_c2f_fast(c_state)
-                # local_states[i_state] = f_state.get_as_array().flatten()
+
                 other_states = local_states[:i_planner] + local_states[i_planner + 1:] + self.static_obstacles_states
 
                 # set states and actions
