@@ -237,6 +237,7 @@ class VehiclePlannerAcados20221(Planner):
         ocp.solver_options.nlp_solver_max_iter = planner_options.nlp_solver_max_iter
         ocp.solver_options.hessian_approx = "GAUSS_NEWTON"  # "GAUSS_NEWTON"  # "EXACT"
         ocp.solver_options.integrator_type = "IRK"
+        ocp.solver_options.globalization = planner_options.globalization#"FUNNEL_L1PEN_LINESEARCH"
         # ocp.solver_options.exact_hess_constr = 0
         ocp.solver_options.sim_method_num_stages = 1
         ocp.solver_options.sim_method_num_steps = 2

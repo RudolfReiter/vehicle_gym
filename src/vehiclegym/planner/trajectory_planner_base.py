@@ -59,6 +59,7 @@ class PlannerOptions(FrozenClass):
     time_stretch_fac: float = 0.00
     nlp_solver: str = "SQP_RTI"
     nlp_solver_max_iter: int = 100
+    globalization: str = "FIXED_STEP"
 
     q0: List = None
     r0: List = None

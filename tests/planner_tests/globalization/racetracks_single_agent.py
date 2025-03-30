@@ -34,11 +34,11 @@ if __name__ == "__main__":
         PlannerOptions, relpath=planner_path, filename="main_devbot_long_plan.json"
     )
 
-    nlp_algorithms = ["SQP_WITH_FEASIBLE_QP", "SQP"]
-    nlp_alg_colors = ["tab:blue", "tab:orange"]
+    global_algorithms = ["FIXED_STEP", "MERIT_BACKTRACKING", "FUNNEL_L1PEN_LINESEARCH"]
+    nlp_alg_colors = ["tab:blue", "tab:orange", "tab:red"]
     racetracks = ["Spielberg", "Austin", "BrandsHatch", "Budapest", "Catalunya", "Hockenheim","IMS","Melbourne"]
-    n_eval = 5
-    s_add = 400
+    n_eval = 10
+    s_add = 200
     DO_PLOT = False
 
     res_dicts = []
@@ -54,8 +54,8 @@ if __name__ == "__main__":
             ax = figure.add_subplot(111)
             plot_road(road, fig=figure, axs=ax)
 
-        for nlp_algorithm, color in zip(nlp_algorithms, nlp_alg_colors):
-            planner_options.nlp_solver = nlp_algorithm
+        for globalization, color in zip(global_algorithms, nlp_alg_colors):
+            planner_options.globalization = globalization
             planner_options.nlp_solver_max_iter = 500
             planner_options.use_cython = False
 
@@ -83,7 +83,7 @@ if __name__ == "__main__":
                 for iter_eval, solution in enumerate(solutions):
                     x_c = road.transform_trajectory_f2c(FrenetTrajectory(solution))
                     if iter_eval == 0:
-                        ax.plot(x_c.x, x_c.y, color=color,alpha=0.5,label=nlp_algorithm)
+                        ax.plot(x_c.x, x_c.y, color=color,alpha=0.5,label=globalization)
                     else:
                         ax.plot(x_c.x, x_c.y, color=color, alpha=0.5)
                     ax.scatter(x_c.x, x_c.y, color=color, alpha=0.5)
@@ -94,7 +94,7 @@ if __name__ == "__main__":
             res_dicts.append(
                 {
                     "racetrack": racetrack,
-                    "nlp_algorithm": nlp_algorithm,
+                    "globalization": globalization,
                     "average_ctime": np.mean(res_timings) * 1000,
                     "acados_errors": res_status4_counter / n_eval * 100,
                     "maximum_distance": np.mean(res_maximum_distances)
@@ -119,7 +119,7 @@ if __name__ == "__main__":
     for res_dict in res_dicts:
         row = []
         row += [res_dict["racetrack"]]
-        row += [res_dict["nlp_algorithm"]]
+        row += [res_dict["globalization"]]
         row += [res_dict["average_ctime"]]
         row += [res_dict["acados_errors"]]
         row += [res_dict["maximum_distance"]]

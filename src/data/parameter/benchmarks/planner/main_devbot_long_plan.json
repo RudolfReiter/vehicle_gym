@@ -24,6 +24,7 @@
         "time_stretch_fac": 0.05,
         "velocity_set": 40,
         "nlp_solver": "SQP",
+        "globalization": "FIXED_STEP",
         "q0": [
         5,
         5.0,
