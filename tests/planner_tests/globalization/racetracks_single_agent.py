@@ -37,10 +37,9 @@ if __name__ == "__main__":
     nlp_algorithms = ["SQP_WITH_FEASIBLE_QP", "SQP"]
     nlp_alg_colors = ["tab:blue", "tab:orange"]
     racetracks = ["Spielberg", "Austin", "BrandsHatch", "Budapest", "Catalunya", "Hockenheim","IMS","Melbourne"]
-    racetracks = ["Melbourne"]
-    n_eval =2
+    n_eval = 5
     s_add = 400
-    DO_PLOT = True
+    DO_PLOT = False
 
     res_dicts = []
     for racetrack in racetracks:
@@ -57,7 +56,7 @@ if __name__ == "__main__":
 
         for nlp_algorithm, color in zip(nlp_algorithms, nlp_alg_colors):
             planner_options.nlp_solver = nlp_algorithm
-            planner_options.nlp_solver_max_iter = 100
+            planner_options.nlp_solver_max_iter = 500
             planner_options.use_cython = False
 
             # Create planner

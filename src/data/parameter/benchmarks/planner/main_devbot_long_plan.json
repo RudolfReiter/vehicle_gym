@@ -5,7 +5,7 @@
         "v_max_terminal_set": 0,
         "w_bound_slack_l1":  1e7,
         "w_obst_slack_l1":  0,
-        "w_acc_slack_l2":  5e6,
+        "w_acc_slack_l2":  2e6,
         "w_bound_slack_l2": 1e7,
         "w_obst_slack_l2":  1e7,
         "debug_mode": true,
@@ -21,18 +21,19 @@
         "use_cython": false,
         "condensing_relative": 0.2,
         "qp_tolerance": 1e-06,
-        "time_stretch_fac": 0.09,
+        "time_stretch_fac": 0.05,
         "velocity_set": 40,
+        "nlp_solver": "SQP",
         "q0": [
         5,
-        50.0,
+        5.0,
         100.0,
         150.0,
-        10000000.0
+        1000000.0
         ],
         "r0": [
         0.001,
-        1000000.0
+        10000000.0
         ],
         "qn": [
         100.0,

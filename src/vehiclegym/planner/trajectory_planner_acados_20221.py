@@ -8,7 +8,7 @@ import numpy as np
 import scipy
 from typing import List
 from vehiclegym.planner.predicitor import Predictor
-from acados_template import AcadosOcp, AcadosOcpSolver
+from acados_template import AcadosOcp, AcadosOcpSolver, ACADOS_INFTY
 
 from vehicle_models.model_kinematic import KinematicModelParameters
 from vehicle_models.model_kinematic_frenet import FrenetModelWithObstaclesEllipse
@@ -208,7 +208,7 @@ class VehiclePlannerAcados20221(Planner):
             [-self.model.params_.maximum_lateral_acc]
         )
 
-        ocp.constraints.uh = np.ones((self.n_con,)) * 1e6
+        ocp.constraints.uh = np.ones((self.n_con,)) * ACADOS_INFTY
         ocp.constraints.uh[0:self.n_con_acc] = np.array(
             [self.model.params_.maximum_lateral_acc]
         )
