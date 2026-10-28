@@ -1,0 +1,116 @@
+{
+  "project": "vehicle_gym",
+  "edition": "Improved original repository with a new portable backend",
+  "upstream_repository": "https://github.com/RudolfReiter/vehicle_gym",
+  "upstream_commit": "09791bf7fd352487d1230d5ae07f5980623f2228",
+  "paper": {
+    "title": "A Hierarchical Approach for Strategic Motion Planning in Autonomous Racing",
+    "venue": "ECC 2023",
+    "doi": "10.23919/ECC57647.2023.10178143",
+    "author_pdf": "https://publications.syscop.de/Reiter2023.pdf"
+  },
+  "environment": {
+    "python": "3.9.23",
+    "numpy": "1.26.4",
+    "scipy": "1.13.1",
+    "casadi": "3.8.1",
+    "solver": "IPOPT via CasADi",
+    "threads": 1
+  },
+  "recorded_evaluation": {
+    "seed": 101,
+    "tasks": [
+      "overtaking",
+      "blocking",
+      "mixed"
+    ],
+    "references": [
+      0,
+      3,
+      -3
+    ],
+    "speed_reference_m_s": 30,
+    "episodes": 9,
+    "episode_limit_s": 16
+  },
+  "planner": {
+    "model": "Original five-state Frenet kinematic model",
+    "intervals": 12,
+    "dt_s": 0.25,
+    "simulation_substeps": 5,
+    "opponent_prediction": "Constant speed and lateral position",
+    "opponent_controller": "Lane tracking and car following",
+    "obstacle_axes_m": [
+      7,
+      3
+    ],
+    "obstacle_slack_limit": 0.08,
+    "constraint_tolerance": 0.0002,
+    "terminal_invariant_set": false
+  },
+  "validation": {
+    "unit_and_numerical_tests": 17,
+    "wheel_import_and_ipopt_solve": true,
+    "playback_state_checks": true,
+    "browser_layout_checked": false,
+    "legacy_acados_execution_checked": false
+  },
+  "source_sha256": {
+    "src/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/data/__init__.py": "a66dfd23bb518dbd27537d64339526b767cc1937dceb3423079a1309edd39a5d",
+    "src/ros/ros_conversion_tools.py": "b528d9bae8b6d5d1db65902b1d2b9d6130d0c270c004149574068fa78fd963f4",
+    "src/ros/ros_node_planner.py": "689e53b64c984f5832a54cc2254b533ff088bab894e75a64233ea8fee4746fcf",
+    "src/ros/ros_node_planner_simple.py": "8c855753776345bbc48ea6569df3b648ae37a35ee56f31581ae56b4f796ef663",
+    "src/ros/rosnode.py": "62939a03e148e2ec70026d94c98f003eacd4a27dd5d8037e126e52568d278122",
+    "src/ros/state_publisher_node.py": "ca39e82088441339e5bfbf7d53d7b2b89ad5397b870f729ef3c1fb5e6197bbc1",
+    "src/vehicle_models/base_parameters.py": "2f60fbe4511ab2939f965af37cf9b6fbc675ad341c98987ce81de86066a7f450",
+    "src/vehicle_models/model_dynamic.py": "102158b27396d2dd8da2a2fd658fbb93195d7322a6beb9e2f27a36c3878490ec",
+    "src/vehicle_models/model_dynamic_cartesian.py": "c7c05eda45e4bb9e03c7921d79cbcb054a08dede2c2710df6cd53cd27a1e5231",
+    "src/vehicle_models/model_dynamic_frenet.py": "c44fd4cd239c5e528cd281c0f1e8fefafe30550407ae16a822a647f90a0e8718",
+    "src/vehicle_models/model_kinematic.py": "6f6888c7d4a8cfcbf82c234ad0eb5dfb1113473ab1209ca56e718a04b4da5ede",
+    "src/vehicle_models/model_kinematic_cartesian.py": "da83aabb9f8364ef79b7505d86735274472e649774df3f0e79337e620072187a",
+    "src/vehicle_models/model_kinematic_dual.py": "cf2c2b12d159143d7c64b6e4168ffb253c1c6d550a8b21fb1d1ed66f1ba34354",
+    "src/vehicle_models/model_kinematic_frenet.py": "b3559c91db292f849e5eb1119600fca55d3196fd4b6c6d2c897d2ab787b2e184",
+    "src/vehicle_models/models_tire.py": "8523c48f3b189b7f47897f2b31024e524317a86c1bdc2ef7febe25cfb6b805a3",
+    "src/vehicle_models/parameters/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/vehicle_models/parameters_roborace_tum.py": "3f5c6145bc44fd075c801b69bb166b6f9fd28dbc84b6d3bf3253481e5cae2682",
+    "src/vehicle_models/simulator.py": "3ac89f991d5a5e7b8a345317fa26b00b717b3087a0c977d82eb2c5ff4c9cda01",
+    "src/vehicle_models/utils.py": "c24c099316a2eeac7bfeee9ae0f8b3d1f9c3900ed1aae42ff74115af8764dd8a",
+    "src/vehiclegym/__init__.py": "c01be073c703cdd91ec53b3ac0d54ae0866268042b7945b49741b4ebd283a291",
+    "src/vehiclegym/animation/animation_helper.py": "61390118c989267c8d60316b87e8d864344f6f828afc693b2f5d53535b43072d",
+    "src/vehiclegym/animation/animator.py": "96c6498dc61ccd0aa256a4ae693764b995465b0e8fc8d5120d8763acf7f58609",
+    "src/vehiclegym/controller/nmpc_20224.py": "ad5e293c654074096c9f392d6e77dda3013d176498c2abdf7870077d835fe06d",
+    "src/vehiclegym/controller/nmpc_20224_ddelta.py": "d4c322f609d6b1ef43551403d1d16814866a30c756701ebb292c22680f3e10b2",
+    "src/vehiclegym/demo.py": "92cfc4e0ef30f9f34fd3e5a071dec394d2e70647c651fe1268b38399562f4e3f",
+    "src/vehiclegym/planner/planner_reference_interfaces.py": "388b134ddec7892976aad94def890d4392b2a738aa0444bf17e3228b71a0b04d",
+    "src/vehiclegym/planner/portable.py": "ced115289afa93cb2c8152e1ac90794e322db30ebbb3327415deeb22f2c93cac",
+    "src/vehiclegym/planner/predicitor.py": "440b1a1e79f548519533499f9c4ea9c4367b675d93ff9aeaf653e44da75fe7ab",
+    "src/vehiclegym/planner/predictor.py": "3f78275ac2c2f2606b2fa4a2a0406cb723c02261de80dd09dbd9dcdbc89e3737",
+    "src/vehiclegym/planner/references.py": "422c0a132fa2e5dc212e0b897d9355eea13ec3d34c011e092286057259eaf364",
+    "src/vehiclegym/planner/trajectory_planner_acados_20221.py": "5837dc55e84c8a987117ad5a5ec2802cce32b6c922fe111402086cd341606b16",
+    "src/vehiclegym/planner/trajectory_planner_acados_iterative.py": "1247796135fceba8034f7b7f58e5a18bf19c5211095d9676174d287fc22605b0",
+    "src/vehiclegym/planner/trajectory_planner_base.py": "3fb31d8e64caa50b574a024a3dfd626c95c9c3af40e79bc86cf84bdea819d535",
+    "src/vehiclegym/plotting/plotters.py": "43074806ac60ac38b66afdc3ea4aecdc1dde9f923dd703457addb65bfd150673",
+    "src/vehiclegym/plotting/pnorm_plotters.py": "a96431921cbd4aa8db23af01da7c948af10b6ed81772292b43b81d3bf22dd5f8",
+    "src/vehiclegym/road/curvature_fun.py": "4e88666bad3d49286855b414c7b5ed90c84b811336d68b69ba005897cbad23a9",
+    "src/vehiclegym/road/curvature_generator.py": "063bb4be251ccb5ad40c9b6a777e40f6a0ddf27c32ea4631f71d91251c0ccc16",
+    "src/vehiclegym/road/road.py": "74727d17c8f3511d6c75c7fd16a9248c1b99e5cc5ea8b6cbad20b33496c2f584",
+    "src/vehiclegym/road/road_helpers.py": "e805362d1dff495f352e8b08024f4198674f0d98e874159326bfae02582a6ac4",
+    "src/vehiclegym/road/track.py": "162625aad81dea4ace479b9e214577f7dd11e5fccfb4e8eff6d9451c7d9df755",
+    "src/vehiclegym/simulator/racing_world.py": "c0dff5943700fa2d08c82954e3b70629cef54d003667c06ac78878b13b45c624",
+    "src/vehiclegym/simulator/simulation_datastructures.py": "634a65553eaa0b66392f3dbfcbb2170e9143b90f76257c6d01f88a681bf7aa5a",
+    "src/vehiclegym/simulator/simulator_cr.py": "0b4b241ccd9089dcc0cfcff966bfdf4958b28da1de02677b2a4e7c00e4d62e53",
+    "src/vehiclegym/simulator/simulator_racetrack.py": "c6cdef5e9d7d0898e379b815638b18189c73fcdeaceac612e8c63b36aff8ab97",
+    "src/vehiclegym/simulator/simulator_replan.py": "80d1a5e6e02a62a7d02940bb73c385646764f30c79f3bdd511c14456247c33a1",
+    "src/vehiclegym/simulator/simulator_simple.py": "70919beea2bff04249b67b43252efefbe3db2022cce8013a62cdcdcf43bceb29",
+    "src/vehiclegym/utils/acados_param_handler.py": "a2792cfa27c71acec6c2c3dd64240156f05ef03270796c39a11600ba42894bab",
+    "src/vehiclegym/utils/automotive_datastructures.py": "7496d3b04a7efc771d11a890fc37b0caca95f29b3355585e6532207b4ac31863",
+    "src/vehiclegym/utils/evaluation_tools.py": "9f20270520b30988fe8dbd68d72343fca59905176826e4931c135263dbd84e82",
+    "src/vehiclegym/utils/evalutation_tools.py": "d9b972dd3e2aeb4d026d625628a8b85db260f7e08ff896858a9881fa52cd01a4",
+    "src/vehiclegym/utils/helpers.py": "b75f189cdaa4f8ea2a41dbfc7860ec58899b43a69154fee5c2b5bc6cdb51fca6"
+  },
+  "data_sha256": {
+    "docs/data/experiment.js": "f4166b822d3eb8f9e5dce4ed129d3484141d0c226a100304684ad2ecfa8ebdde",
+    "docs/data/experiment.json": "8be3944e713141733631c0331173ef6a42c4a80acf7f2e1774c160adc87f141c"
+  }
+}

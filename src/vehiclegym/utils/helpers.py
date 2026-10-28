@@ -5,9 +5,7 @@ import sys
 import warnings
 from typing import List, TYPE_CHECKING, Tuple
 import casadi as cs
-import matplotlib
 import numpy as np
-import pandas as pd
 import scipy
 from scipy.interpolate import UnivariateSpline
 from vehicle_models.model_kinematic import KinematicModelParameters
@@ -74,6 +72,8 @@ class FrozenClass(object):
 
 
 def latexify(fontsize: int = 10):
+    import matplotlib
+
     params = {'backend': 'ps',
               'text.latex.preamble': r"\usepackage{gensymb} \usepackage{amsmath}",
               'axes.labelsize': fontsize,
@@ -89,6 +89,8 @@ def latexify(fontsize: int = 10):
 
 
 def latexify_debug():
+    import matplotlib
+
     params = {'backend': 'ps',
               'text.latex.preamble': r"\usepackage{gensymb} \usepackage{amsmath}",
               'axes.labelsize': 20,
@@ -262,6 +264,8 @@ def get_tracking_state(state_traj: np.ndarray,
 
 
 def read_track(name: str = "Spielberg", oversample_factor: int = 2):
+    import pandas as pd
+
     df = pd.read_csv(DATAPATH + os.sep + "racetracks/" + name + ".csv")
     x = np.expand_dims(np.array(df.get("# x_m").array), 1)
     N = x.shape[0]

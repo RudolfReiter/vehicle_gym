@@ -1,6 +1,6 @@
 import numpy as np
 
-from vehiclegym.utils.evalutation_tools import check_collision_multi
+from vehiclegym.utils.evaluation_tools import check_collision_multi
 from vehiclegym.planner.trajectory_planner_base import (PlannerOptions,
                                                         PlanningDataContainer)
 import casadi as cs

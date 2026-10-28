@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 import casadi as cs
 import numpy as np
-from acados_template import AcadosModel
 from vehicle_models.base_parameters import BaseModelParameters
 from typing import List, Tuple, TYPE_CHECKING
 
@@ -98,6 +97,8 @@ class KinematicVehicleModel(ABC):
         self.f_ode = cs.Function('f_ode', [self.x_states, self.u_controls], [self.rhs], {"allow_free": True})
 
     def export4acados(self):
+        from acados_template import AcadosModel
+
         model = AcadosModel()
         model.f_impl_expr = self.xdot - self.rhs
         model.f_expl_expr = self.rhs

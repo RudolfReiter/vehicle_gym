@@ -13,7 +13,7 @@ from vehicle_models.model_kinematic_frenet import FrenetModel
 
 from vehicle_models.model_kinematic import KinematicModelParameters, KinematicVehicleModel
 from vehiclegym.utils.automotive_datastructures import FrenetTrajectory, CartesianTrajectory
-from vehiclegym.utils.evalutation_tools import get_minimum_distance_multi, check_collision_multi
+from vehiclegym.utils.evaluation_tools import get_minimum_distance_multi, check_collision_multi
 from vehiclegym.simulator.simulation_datastructures import KinodynamicSimulator
 from vehiclegym.road.road import Road
 from vehiclegym.simulator.simulation_datastructures import SimulatorOptions, SimulationStatistics

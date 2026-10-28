@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "Please cite the ECC 2023 paper when using this research software."
+title: "vehicle_gym — improved research interface"
+type: software
+license: MIT
+authors:
+  - family-names: Reiter
+    given-names: Rudolf
+preferred-citation:
+  type: conference-paper
+  title: "A Hierarchical Approach for Strategic Motion Planning in Autonomous Racing"
+  authors:
+    - family-names: Reiter
+      given-names: Rudolf
+    - family-names: Hoffmann
+      given-names: Jasper
+    - family-names: Boedecker
+      given-names: Joschka
+    - family-names: Diehl
+      given-names: Moritz
+  year: 2023
+  conference:
+    name: "European Control Conference (ECC)"
+  doi: "10.23919/ECC57647.2023.10178143"
+  start: 1
+  end: 8
