@@ -16,3 +16,9 @@ The original root-level exported classes remain lazily accessible. Access to an 
 `Planner.get_formatted_solution()` now returns a new dataclass instance with copied arrays per call. Previously it wrote fields on the dataclass class itself. Reference validation now checks every axis and finite values; enabling `check_sizes` raises `ValueError` for invalid output. Rectangle collision checks now include intersecting edges without enclosed vertices, and still treat touching as contact.
 
 The new source uses typed configuration/reference dataclasses, explicit failure semantics, package resources, and modules with a single responsibility. Upstream code has not been reformatted wholesale. Tests cover the portable path and targeted regressions; full acados integration remains to be verified in its compiled environment.
+
+## Portable API 1.2 / interactive-v2
+
+Opponent inputs accept both legacy `[s,n,v]` and full `[s,n,alpha,v,delta]` rows. Full measured states preserve heading in prediction. `Plan` now includes `opponent_predictions` and `opponent_modes`, the exact trajectories supplied to that solve. The portable predictor applies role-dependent assumptions; the original acados predictor API is unchanged.
+
+The recorded scenario protocol changes to `interactive-v2`: 96 steps, faster gap-seeking blocking opponents, and oriented Cartesian collision checks. HILEPP checkpoints from the earlier scenario protocol must be retrained; the evaluation command rejects a mismatched training manifest. See [control and prediction semantics](CONTROL_AND_PREDICTION.md).

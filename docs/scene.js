@@ -1,4 +1,4 @@
-/* Replays recorded states. The orange forecast stays fixed for three seconds. */
+/* Recorded simulation with live MPC plans and separately labeled opponent assumptions. */
 (() => {
   const lerp = (a, b, f) => a + (b - a) * f;
   function bracket(grid, value) {
@@ -12,14 +12,23 @@
     const states = opponent === null ? run.states : run.opponents.map(row => row[opponent]);
     return states[lo].map((v, i) => lerp(v, states[hi][i], f));
   }
-  function forecast(run, time, horizon = 3, dt = .25) {
+  function currentPlan(run, time, dt = .25) {
+    const index = Math.min(run.plans.length - 1, Math.max(0, Math.floor((time + 1e-9) / dt)));
+    return {index, plan: run.plans[index]};
+  }
+  function interpolatePlan(states, elapsed, dt = .25) {
+    const node = Math.min(states.length - 2, Math.max(0, Math.floor(elapsed / dt)));
+    const f = Math.max(0, Math.min(1, (elapsed - node * dt) / dt));
+    return states[node].map((value, i) => lerp(value, states[node + 1][i], f));
+  }
+  function opponentAudit(run, time, opponent, horizon = 3, dt = .25) {
     const origin = Math.floor(Math.max(0, time - 1e-8) / horizon) * horizon;
     const plan = run.plans[Math.round(origin / dt)];
-    if (!plan || !plan.success) return null;
+    if (!plan || !plan.opponent_predictions?.[opponent]) return null;
     const elapsed = Math.max(0, Math.min(horizon, time - origin));
-    const index = Math.min(plan.states.length - 2, Math.floor(elapsed / dt));
-    const f = Math.min(1, (elapsed - index * dt) / dt);
-    return {plan, origin, elapsed, state: plan.states[index].map((v, i) => lerp(v, plan.states[index + 1][i], f))};
+    return {origin, elapsed, mode: plan.opponent_modes[opponent],
+      states: plan.opponent_predictions[opponent],
+      state: interpolatePlan(plan.opponent_predictions[opponent], elapsed, dt)};
   }
   class DrivingScene {
     constructor(canvas, data) {
@@ -108,11 +117,19 @@
       }
       for (let s = Math.floor(start / 50) * 50; s < end; s += 50) if (Math.abs(s - state[0]) > 18) this.label(...this.world(s, -10), `${s} m`, '#64726d', 0);
     }
-    render(scenario, run, time, {ghost = true, dt = 1 / 60} = {}) {
+    envelope(state, color) {
+      const points = Array.from({length: 49}, (_, i) => {
+        const angle = i / 48 * Math.PI * 2;
+        return this.world(state[0] + 7 * Math.cos(angle), state[1] + 3 * Math.sin(angle));
+      });
+      this.poly(points, '#b4481912'); this.line(points, color, 1.2, [4, 5]);
+    }
+    render(scenario, run, time, {overlay = 'mpc', opponent = 0, probe = 1, envelopes = true, dt = 1 / 60} = {}) {
       this.track = run.track;
       const state = sample(run, time), pose = this.pose(state), c = this.ctx;
-      const target = this.view === 'follow' ? this.world(state[0] + 20, 0) : this.world(240, 0);
-      const desired = this.view === 'follow' ? Math.min(this.w / 112, this.h / 55) : Math.min(this.w / 680, this.h / 230);
+      const midpoint = (run.track.s[0] + run.track.s.at(-1)) / 2;
+      const target = this.view === 'follow' ? this.world(state[0] + 14, 0) : this.world(midpoint, 0);
+      const desired = this.view === 'follow' ? Math.min(this.w / 112, this.h / 55) : Math.min(this.w / (run.track.s.at(-1) - run.track.s[0]), this.h / 230);
       if (!this.focus) { this.focus = target; this.scale = desired; }
       const blend = 1 - Math.exp(-dt / .3);
       this.focus = this.focus.map((v, i) => lerp(v, target[i], blend)); this.scale = lerp(this.scale, desired, blend);
@@ -120,24 +137,44 @@
       c.clearRect(0, 0, this.w, this.h); c.fillStyle = '#f3f6f0'; c.fillRect(0, 0, this.w, this.h);
       this.road(state);
       const index = bracket(run.time, time)[0];
-      this.line(run.states.slice(0, index + 1).map(s => this.world(s[0], s[1])).concat([[pose.x, pose.y]]), '#2166ac', 2.5);
-      const fixed = forecast(run, time, this.data.horizon, this.data.dt);
-      this.lastForecast = fixed; this.lastError = null;
-      if (fixed && ghost) {
-        this.line(fixed.plan.states.map(s => this.world(s[0], s[1])), '#b44819', 2.5, [8, 5]);
-        const predicted = this.pose(fixed.state);
-        this.car(predicted, '#c46b39', true); this.label(predicted.x, predicted.y, 'Fixed forecast', '#a54720', 100);
-        this.line([[predicted.x, predicted.y, 1.3], [pose.x, pose.y, 1.3]], '#a54720', 2, [3, 3]);
-        this.lastError = Math.hypot(predicted.x - pose.x, predicted.y - pose.y);
+      this.line(run.states.slice(Math.max(0,index-20), index+1).map(s=>this.world(s[0],s[1])).concat([[pose.x,pose.y]]), '#2166ac77', 2);
+      const current = currentPlan(run, time, this.data.dt);
+      this.lastPlan = current; this.lastAudit = null; this.lastError = null;
+      if (current.plan?.success && overlay === 'mpc') {
+        const plan = current.plan;
+        this.line(plan.states.map(s => this.world(s[0], s[1])), '#2166ac', 3);
+        const future = this.pose(interpolatePlan(plan.states, probe, this.data.dt));
+        this.car(future, '#2166ac', true);
+        this.label(future.x, future.y, `Ego plan +${probe.toFixed(1)} s`, '#2166ac', -45);
+        plan.opponent_predictions.forEach((states, i) => {
+          const p = this.pose(interpolatePlan(states, probe, this.data.dt));
+          this.line(states.map(s => this.world(s[0], s[1])), '#b4481988', i === opponent ? 2.4 : 1.5, [7,5]);
+          if (i === opponent) {
+            if (envelopes) this.envelope(interpolatePlan(states, probe, this.data.dt), '#b44819');
+            this.car(p, '#c46b39', true);
+            this.label(p.x, p.y, `Opponent ${i+1} +${probe.toFixed(1)} s`, '#a54720', 80);
+          }
+        });
+      } else if (overlay === 'audit') {
+        const audit = opponentAudit(run, time, opponent, this.data.horizon, this.data.dt);
+        this.lastAudit = audit;
+        if (audit) {
+          const predicted = this.pose(audit.state), actual = this.pose(sample(run, time, opponent));
+          this.line(audit.states.map(s => this.world(s[0],s[1])), '#b44819', 2, [7,5]);
+          this.car(predicted, '#c46b39', true);
+          this.label(predicted.x, predicted.y, `Opponent ${opponent+1} · held assumption`, '#a54720', 85);
+          this.line([[predicted.x,predicted.y,1], [actual.x,actual.y,1]], '#b44819', 2, [3,3]);
+          this.lastError = Math.hypot(predicted.x-actual.x,predicted.y-actual.y);
+        }
       }
-      for (let i = 0; i < 3; i++) {
-        const opponent = this.pose(sample(run, time, i));
-        this.car(opponent, ['#72877c', '#7a8193', '#95867e'][i]);
-        this.label(opponent.x, opponent.y, `Opponent ${i + 1}`, '#526170', 20);
+      for (let i=0;i<3;i++) {
+        const actual = this.pose(sample(run,time,i));
+        this.car(actual, ['#72877c','#7a8193','#95867e'][i]);
+        this.label(actual.x,actual.y,`Opponent ${i+1} · actual`,'#526170',24);
       }
-      this.car(pose, '#2166ac'); this.label(pose.x, pose.y, 'Ego · actual', '#2166ac', -75);
-      this.lastState = state; this.dirty = false;
+      this.car(pose, '#2166ac'); this.label(pose.x,pose.y,'Ego · actual','#2166ac',-75);
+      this.lastState=state;this.dirty=false;
     }
   }
-  window.DrivingScene = DrivingScene; window.sampleRun = sample; window.fixedForecast = forecast;
+  window.DrivingScene = DrivingScene; window.sampleRun = sample; window.currentPlan = currentPlan; window.opponentAudit = opponentAudit; window.interpolatePlan = interpolatePlan;
 })();

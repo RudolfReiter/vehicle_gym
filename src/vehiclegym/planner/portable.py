@@ -10,6 +10,7 @@ import casadi as ca
 import numpy as np
 from vehicle_models.model_kinematic import KinematicModelParameters
 from vehicle_models.model_kinematic_frenet import FrenetModel
+from vehiclegym.planner.opponent_prediction import normalize_opponents, predict_opponents
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,8 @@ class Plan:
     max_violation: float
     solve_ms: float
     max_obstacle_slack: float
+    opponent_predictions: np.ndarray
+    opponent_modes: tuple
 
 
 class PredictivePlanner:
@@ -57,7 +60,7 @@ class PredictivePlanner:
         X = ca.MX.sym("X", 5, c.intervals + 1)
         U = ca.MX.sym("U", 2, c.intervals)
         slack = ca.MX.sym("obstacle_slack", c.intervals + 1)
-        P = ca.MX.sym("P", 9 + 3 * c.max_opponents)
+        P = ca.MX.sym("P", 9 + 2 * c.max_opponents * (c.intervals + 1))
         terms, low, high = [], [], []
 
         def constrain(expression, lower, upper):
@@ -83,8 +86,9 @@ class PredictivePlanner:
             constrain(state[4], -0.30, 0.30)
             constrain(self.model.f_a_lat(state), -c.lateral_acceleration, c.lateral_acceleration)
             for j in range(c.max_opponents):
-                opponent = P[9 + 3 * j : 12 + 3 * j]
-                ds = (state[0] - opponent[0] - k * c.dt * opponent[2]) / c.obstacle_longitudinal
+                offset = 9 + 2 * (j * (c.intervals + 1) + k)
+                opponent = P[offset : offset + 2]
+                ds = (state[0] - opponent[0]) / c.obstacle_longitudinal
                 dn = (state[1] - opponent[1]) / c.obstacle_lateral
                 constrain(ds**2 + dn**2 + slack[k], 1, np.inf)
             cost += 1e4 * slack[k] + 1e4 * slack[k] ** 2
@@ -126,13 +130,16 @@ class PredictivePlanner:
     def plan(self, state, opponents, reference):
         c = self.config
         state = np.asarray(state, dtype=float)
-        opponents = np.asarray(opponents, dtype=float).reshape(-1, 3)
+        opponents = normalize_opponents(opponents)
         if state.shape != (5,) or len(opponents) > c.max_opponents:
             raise ValueError("Expected five ego states and at most max_opponents vehicles")
         if not np.isfinite(state).all() or not np.isfinite(opponents).all():
             raise ValueError("States must be finite")
-        obstacles = np.tile([state[0] + 10000, 0, 0], (c.max_opponents, 1))
-        obstacles[: len(opponents)] = opponents
+        predictions, modes = predict_opponents(
+            state, opponents, np.arange(c.intervals + 1) * c.dt, self.track
+        )
+        obstacles = np.tile([state[0] + 10000, 0], (c.max_opponents, c.intervals + 1, 1))
+        obstacles[: len(opponents)] = predictions[:, :, :2]
         p = np.r_[
             state,
             reference.speed,
@@ -182,4 +189,6 @@ class PredictivePlanner:
             violation,
             (perf_counter() - start) * 1000,
             float(np.max(slack_values)),
+            predictions,
+            modes,
         )

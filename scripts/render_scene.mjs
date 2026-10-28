@@ -50,6 +50,6 @@ scene.render(scenario,run,Math.min(4.8,run.time.at(-1)));
 context.font='20px sans-serif';context.fillStyle='#202d3b';context.textAlign='left';
 context.fillText(data.kind==='hilepp'?'HILEPP · Hierarchical racing policy':'vehicle_gym · Nonlinear predictive planning',30,38);
 context.font='16px sans-serif';context.fillStyle='#526170';context.fillText('Recorded simulation · ECC 2023 research',30,67);
-context.fillText('Blue: actual ego     Orange: fixed 3-second forecast     Gray: opponents',30,585);
+context.fillText('Blue: ego + current plan     Orange: obstacle assumptions     Solid cars: actual traffic',30,585);
 fs.writeFileSync(path.join(out,'snapshot.svg'),context.output());
 console.log('Exported actual scene renderer to artifacts/scenes/snapshot.svg');
