@@ -7,13 +7,8 @@ import casadi as cs
 import numpy as np
 import scipy
 from typing import List
-<<<<<<< HEAD
 from vehiclegym.planner.predictor import Predictor
-from acados_template import AcadosOcp, AcadosOcpSolver
-=======
-from vehiclegym.planner.predicitor import Predictor
 from acados_template import AcadosOcp, AcadosOcpSolver, ACADOS_INFTY
->>>>>>> origin/main
 
 from vehicle_models.model_kinematic import KinematicModelParameters
 from vehicle_models.model_kinematic_frenet import FrenetModelWithObstaclesEllipse
