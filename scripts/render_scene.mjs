@@ -41,15 +41,19 @@ const data=JSON.parse(fs.readFileSync(path.join(root,'docs/data/experiment.json'
 const sandbox={window:{devicePixelRatio:1},ResizeObserver:class{observe(){}},Math};
 vm.runInNewContext(fs.readFileSync(path.join(root,'docs/scene.js'),'utf8'),sandbox);
 
-const scenario=data.scenarios[0],run=scenario.runs[data.kind==='hilepp'?2:0];
+const defensive = data.defense_training;
+const scenario=defensive?data.scenarios.find(s=>s.id==='blocking'):data.scenarios[0];
+const run=defensive?scenario.runs.find(r=>r.id===(data.defense_reference_limit?'defense_limited':'defense')):scenario.runs[data.kind==='hilepp'?2:0];
+const event=run.events?.find(e=>e.kind==='defensive_move');
+const snapshotTime=defensive&&event?event.time:Math.min(4.8,run.time.at(-1));
 const out=path.join(root,'artifacts/scenes');fs.mkdirSync(out,{recursive:true});
 const context=new SVGContext(1200,620);
 const canvas={getContext:()=>context,getBoundingClientRect:()=>({width:1200,height:620})};
 const scene=new sandbox.window.DrivingScene(canvas,data);
-scene.render(scenario,run,Math.min(4.8,run.time.at(-1)));
+scene.render(scenario,run,snapshotTime);
 context.font='20px sans-serif';context.fillStyle='#202d3b';context.textAlign='left';
 context.fillText(data.kind==='hilepp'?'HILEPP · Hierarchical racing policy':'vehicle_gym · Nonlinear predictive planning',30,38);
-context.font='16px sans-serif';context.fillStyle='#526170';context.fillText('Recorded simulation · ECC 2023 research',30,67);
-context.fillText('Blue: actual ego     Orange: fixed 3-second forecast     Gray: opponents',30,585);
+context.font='16px sans-serif';context.fillStyle='#526170';context.fillText(`${run.name} · seed ${run.seed} · t = ${snapshotTime.toFixed(2)} s`,30,67);
+context.fillText('Blue: ego + current plan     Orange: obstacle assumptions     Solid cars: actual traffic',30,585);
 fs.writeFileSync(path.join(out,'snapshot.svg'),context.output());
 console.log('Exported actual scene renderer to artifacts/scenes/snapshot.svg');

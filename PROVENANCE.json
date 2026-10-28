@@ -29,27 +29,30 @@
       3,
       -3
     ],
-    "speed_reference_m_s": 30,
+    "speed_reference_m_s": 32,
     "episodes": 9,
-    "episode_limit_s": 16
+    "episode_limit_s": 24,
+    "environment_version": "interactive-v2"
   },
   "planner": {
     "model": "Original five-state Frenet kinematic model",
     "intervals": 12,
     "dt_s": 0.25,
     "simulation_substeps": 5,
-    "opponent_prediction": "Constant speed and lateral position",
-    "opponent_controller": "Lane tracking and car following",
+    "opponent_prediction": "Measured-speed/heading leaders and alongside cars; 8 m/s\u00b2 braking-to-stop followers as a yielding feasibility assumption",
+    "opponent_controller": "Gap-seeking passing policy with 2.5 s lane commitment and car following",
     "obstacle_axes_m": [
       7,
       3
     ],
     "obstacle_slack_limit": 0.08,
     "constraint_tolerance": 0.0002,
-    "terminal_invariant_set": false
+    "terminal_invariant_set": false,
+    "opponent_prediction_integration": "Midpoint speed, current curvature, lateral road clipping",
+    "collision_check": "Oriented Cartesian 4.6 x 1.9 m rectangles, every 0.05 s"
   },
   "validation": {
-    "unit_and_numerical_tests": 17,
+    "unit_and_numerical_tests": 21,
     "wheel_import_and_ipopt_solve": true,
     "playback_state_checks": true,
     "browser_layout_checked": false,
@@ -76,14 +79,15 @@
     "src/vehicle_models/parameters_roborace_tum.py": "3f5c6145bc44fd075c801b69bb166b6f9fd28dbc84b6d3bf3253481e5cae2682",
     "src/vehicle_models/simulator.py": "3ac89f991d5a5e7b8a345317fa26b00b717b3087a0c977d82eb2c5ff4c9cda01",
     "src/vehicle_models/utils.py": "c24c099316a2eeac7bfeee9ae0f8b3d1f9c3900ed1aae42ff74115af8764dd8a",
-    "src/vehiclegym/__init__.py": "c01be073c703cdd91ec53b3ac0d54ae0866268042b7945b49741b4ebd283a291",
+    "src/vehiclegym/__init__.py": "303f8f0425d3943bfa23c42a093e4f719eb6385c7960870e6e9cf4f31b4db89d",
     "src/vehiclegym/animation/animation_helper.py": "61390118c989267c8d60316b87e8d864344f6f828afc693b2f5d53535b43072d",
     "src/vehiclegym/animation/animator.py": "96c6498dc61ccd0aa256a4ae693764b995465b0e8fc8d5120d8763acf7f58609",
     "src/vehiclegym/controller/nmpc_20224.py": "ad5e293c654074096c9f392d6e77dda3013d176498c2abdf7870077d835fe06d",
     "src/vehiclegym/controller/nmpc_20224_ddelta.py": "d4c322f609d6b1ef43551403d1d16814866a30c756701ebb292c22680f3e10b2",
-    "src/vehiclegym/demo.py": "92cfc4e0ef30f9f34fd3e5a071dec394d2e70647c651fe1268b38399562f4e3f",
+    "src/vehiclegym/demo.py": "d23b72ce0a417010d451369cdbfc102709ba380b10938f3296347ea8b44b8021",
+    "src/vehiclegym/planner/opponent_prediction.py": "34db1250cebe61fe6acadb71783cc3838d9557070c3835ac027a5d8ccb97f5ca",
     "src/vehiclegym/planner/planner_reference_interfaces.py": "388b134ddec7892976aad94def890d4392b2a738aa0444bf17e3228b71a0b04d",
-    "src/vehiclegym/planner/portable.py": "ced115289afa93cb2c8152e1ac90794e322db30ebbb3327415deeb22f2c93cac",
+    "src/vehiclegym/planner/portable.py": "6156ca4b11060642a75eb697da12a53cb8e3e55279be0148d85ee780fba2787c",
     "src/vehiclegym/planner/predicitor.py": "440b1a1e79f548519533499f9c4ea9c4367b675d93ff9aeaf653e44da75fe7ab",
     "src/vehiclegym/planner/predictor.py": "3f78275ac2c2f2606b2fa4a2a0406cb723c02261de80dd09dbd9dcdbc89e3737",
     "src/vehiclegym/planner/references.py": "422c0a132fa2e5dc212e0b897d9355eea13ec3d34c011e092286057259eaf364",
@@ -97,7 +101,7 @@
     "src/vehiclegym/road/road.py": "74727d17c8f3511d6c75c7fd16a9248c1b99e5cc5ea8b6cbad20b33496c2f584",
     "src/vehiclegym/road/road_helpers.py": "e805362d1dff495f352e8b08024f4198674f0d98e874159326bfae02582a6ac4",
     "src/vehiclegym/road/track.py": "162625aad81dea4ace479b9e214577f7dd11e5fccfb4e8eff6d9451c7d9df755",
-    "src/vehiclegym/simulator/racing_world.py": "c0dff5943700fa2d08c82954e3b70629cef54d003667c06ac78878b13b45c624",
+    "src/vehiclegym/simulator/racing_world.py": "a7f987975c261e01bf318d6fb8cd6dd4a981714b11f04cf261aa8b9ce21fba62",
     "src/vehiclegym/simulator/simulation_datastructures.py": "634a65553eaa0b66392f3dbfcbb2170e9143b90f76257c6d01f88a681bf7aa5a",
     "src/vehiclegym/simulator/simulator_cr.py": "0b4b241ccd9089dcc0cfcff966bfdf4958b28da1de02677b2a4e7c00e4d62e53",
     "src/vehiclegym/simulator/simulator_racetrack.py": "c6cdef5e9d7d0898e379b815638b18189c73fcdeaceac612e8c63b36aff8ab97",
@@ -110,7 +114,7 @@
     "src/vehiclegym/utils/helpers.py": "b75f189cdaa4f8ea2a41dbfc7860ec58899b43a69154fee5c2b5bc6cdb51fca6"
   },
   "data_sha256": {
-    "docs/data/experiment.js": "f4166b822d3eb8f9e5dce4ed129d3484141d0c226a100304684ad2ecfa8ebdde",
-    "docs/data/experiment.json": "8be3944e713141733631c0331173ef6a42c4a80acf7f2e1774c160adc87f141c"
+    "docs/data/experiment.js": "0107e453aefb604228ce5bd7a50a914fc7126b12e3d172200afdd4a7e2685b70",
+    "docs/data/experiment.json": "e2b18dabd5849123ac17317bea91dcb0db91eec78942c0f7d0955631fcfb31f3"
   }
 }

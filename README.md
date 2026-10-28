@@ -4,7 +4,7 @@
 
 [Research page](https://rudolfreiter.github.io/vehicle_gym/) · [ECC 2023 paper](https://ieeexplore.ieee.org/document/10178143) · [Author manuscript](https://publications.syscop.de/Reiter2023.pdf) · [HILEPP wrapper](https://github.com/RudolfReiter/hilepp)
 
-![Actual simulated traffic and a fixed forecast](docs/assets/driving-scene.png)
+![Actual traffic, the current ego plan, and opponent obstacle assumptions](docs/assets/driving-scene.png)
 
 This branch improves Rudolf Reiter’s original repository and preserves its history. The portable planner and recorded experiments are new implementations, not a reproduction of the paper’s full benchmark. The original acados backend remains available.
 
@@ -36,11 +36,11 @@ Open <http://localhost:8000>. Committed replay data make the page usable immedia
 from vehiclegym.planner.references import FrenetReference
 from vehiclegym.simulator.racing_world import RacingWorld
 
-world = RacingWorld(max_steps=64)
+world = RacingWorld(max_steps=96)
 observation = world.reset(seed=101, scenario="overtaking")
 while not world.finished:
     observation, reward, terminated, truncated, info = world.step(
-        FrenetReference(speed=30, lateral=3)
+        FrenetReference(speed=32, lateral=3)
     )
     if info["solver_failed"]:
         print(info["plan"].status)
@@ -56,7 +56,7 @@ A failed optimizer solution ends the episode **before applying its control**. Re
 - Rectangle collision detection uses the separating-axis theorem, including crossing edges without contained vertices.
 - Correct module names `predictor` and `evaluation_tools`, with compatibility imports for the old spellings.
 - Executable examples moved out of the test suite; original GIFs moved to `docs/assets/legacy/`.
-- A white research page with a continuous follow camera, fixed three-second forecast ghost, actual/reference traces, and downloadable figures/data.
+- A white research page with a continuous follow camera, current MPC horizon, opponent-assumption inspection, event markers, actual/reference traces, and downloadable figures/data.
 
 See [migration notes](docs/MIGRATION.md) and [original project notes](docs/LEGACY.md).
 
@@ -77,9 +77,11 @@ scripts/                      Figure generation, validation, source export
 
 The portable backend uses the original five-state Frenet bicycle model `[s, n, alpha, v, delta]`, RK4 integration, 12 intervals of 0.25 s, and nonlinear multiple shooting in CasADi/IPOPT. It constrains road position, speed, steering angle/rate, longitudinal force, lateral acceleration, and obstacle ellipses. Obstacle slack is bounded to `[0, 0.08]` and penalized; solver residuals and slack are exported separately.
 
-Opponents use fixed lane tracking and car following, **not the paper’s MPC opponent policies**. Ego predictions assume constant opponent speed/lateral position. Collision checks approximate vehicle bodies as axis-aligned rectangles in Frenet coordinates, checked every 0.05 s. Ellipse constraints are also in Frenet coordinates. No terminal invariant set is implemented, and there is no recursive-feasibility or safety guarantee.
+MPC **replans every 0.25 s and applies only the first control**. Opponent trajectories are regenerated from current measurements in every solve: constant speed and measured heading for leading/alongside cars; full braking for followers as a yielding feasibility assumption. The displayed orange trajectories are exactly those used by the optimizer. See [control and prediction semantics](docs/CONTROL_AND_PREDICTION.md).
 
-The recorded nine runs compare three references across three tasks using seed 101 and 16-second episodes. All nine completed without a detected collision or solver failure. This small demonstration is not a statistical safety evaluation. See [recorded metrics](docs/data/experiment.json).
+Opponents actively seek passing gaps and slow for traffic. They are not the paper’s MPC opponent policies. Blocking challengers target 34–36 m/s while the ego is limited to 32 m/s, so simply accelerating cannot escape them. Collision checks use oriented Cartesian rectangles every 0.05 s. Obstacle ellipses remain in Frenet coordinates. No terminal invariant set is implemented, and there is no recursive-feasibility or safety guarantee.
+
+The nine recorded runs compare three references across three tasks using seed 101 and 24-second episodes. All nine completed without a detected collision or solver failure. In blocking, the center-reference controller loses two places; this is a fixed-reference baseline, not learned defense. See [recorded metrics](docs/data/experiment.json).
 
 Packaged real track geometry is also available:
 
