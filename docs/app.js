@@ -5,9 +5,10 @@
   const names = {overtaking: 'Overtaking · pass a staggered pack', blocking: 'Blocking · defend against faster challengers', mixed: 'Mixed traffic · pass ahead, defend behind'};
   const modes = {follower_braking: 'Follower: brake-to-stop feasibility assumption', constant_velocity_heading: 'Leader / alongside: constant-speed, measured-heading estimate'};
   const colors = ['#72877c','#7a8193','#95867e'];
-  let scenario = data.scenarios[0], run = scenario.runs[data.kind === 'hilepp' ? 2 : 0];
+  let scenario = data.defense_training ? data.scenarios.find(s=>s.id==='blocking') : data.scenarios[0], run = scenario.runs[data.kind === 'hilepp' ? 2 : 0];
   let time = 0, playing = false, lastFrame = null;
   $('scenario').innerHTML = data.scenarios.map(s=>`<option value="${s.id}">${s.id[0].toUpperCase()+s.id.slice(1)}</option>`).join('');
+  $('scenario').value=scenario.id;
   function selectRun() {
     run = scenario.runs.find(r=>r.id===$('method').value)||scenario.runs[0];
     time=0;playing=false;lastFrame=null;scene.focus=null;
@@ -23,7 +24,7 @@
     scenario=data.scenarios.find(s=>s.id===$('scenario').value)||data.scenarios[0];
     const previous=run.id;
     $('method').innerHTML=scenario.runs.map(r=>`<option value="${r.id}">${r.name}</option>`).join('');
-    $('method').value=previous;selectRun();
+    $('method').value=scenario.id==='blocking'&&previous==='learned'&&data.defense_training?(data.defense_reference_limit?'defense_limited':'defense'):previous.startsWith('defense')?'learned':previous;selectRun();
   }
   function render(dt=1/60) {
     const opponent=Number($('opponent').value),overlay=$('overlay').value,probe=Number($('probe').value);
@@ -61,7 +62,9 @@
     const actual=column=>run.time.map((t,i)=>[t,run.states[i][column]]);
     const ref=key=>run.time.map((t,i)=>[t,run.references[Math.min(i,run.references.length-1)][key]]);
     plot('speed-plot',[{values:actual(3),color:'#2166ac'},{values:ref('speed'),color:'#526170',dash:true}],0,40,'Ego speed (m/s)');
-    plot('lateral-plot',[{values:actual(1),color:'#2166ac'},{values:ref('lateral'),color:'#526170',dash:true}],-6,6,'Lateral position (m)');
+    const lateralLines=[{values:actual(1),color:'#2166ac'},{values:ref('lateral'),color:'#526170',dash:true}];
+    if(run.raw_lateral_references)lateralLines.push({values:run.time.map((t,i)=>[t,run.raw_lateral_references[Math.min(i,run.raw_lateral_references.length-1)]]),color:'#76548a',dash:true});
+    plot('lateral-plot',lateralLines,-6,6,'Lateral position (m)');
     const gaps=[0,1,2].map(j=>({values:run.time.map((t,i)=>[t,run.opponents[i][j][0]-run.states[i][0]]),color:colors[j]}));
     const values=gaps.flatMap(l=>l.values.map(v=>v[1]));
     plot('gap-plot',gaps,Math.min(-10,...values)-5,Math.max(10,...values)+5,'Opponent distance ahead (m)');

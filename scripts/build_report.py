@@ -31,6 +31,10 @@ methods = [
     ("initial", "Initial policy", "#b44819"),
     ("learned", "Trained SAC", "#2166ac"),
 ]
+if data.get("defense_training"):
+    methods.append(("defense", "Defensive SAC (auxiliary reward)", "#94672f"))
+if data.get("defense_reference_limit"):
+    methods.append(("defense_limited", "Defensive SAC + limited reference", "#76548a"))
 if rl:
     fig, axes = plt.subplots(1, 2, figsize=(12, 4), layout="constrained")
     validation = data["training"]["validation"]
@@ -57,11 +61,20 @@ if rl:
             ]
             for scenario in data["scenarios"]
         ]
-        means = [np.mean(values) for values in series]
-        axes[1].bar(x + (j - 1) * 0.24, means, 0.22, label=label, color=color, alpha=0.85)
+        means = [np.mean(values) if values else float("nan") for values in series]
+        axes[1].bar(
+            x + (j - (len(methods) - 1) / 2) * 0.18,
+            means,
+            0.17,
+            label=label,
+            color=color,
+            alpha=0.85,
+        )
         for i, values in enumerate(series):
             axes[1].scatter(
-                x[i] + (j - 1) * 0.24 + np.linspace(-0.055, 0.055, len(values)),
+                x[i]
+                + (j - (len(methods) - 1) / 2) * 0.18
+                + np.linspace(-0.055, 0.055, len(values)),
                 values,
                 s=18,
                 color=color,
@@ -72,7 +85,7 @@ if rl:
     axes[1].set(
         xticks=x,
         xticklabels=[s["id"].capitalize() for s in data["scenarios"]],
-        title="Held-out returns · five seeds per task",
+        title="Evaluation returns · five seeds per task",
         ylabel="Episode return",
     )
     axes[1].legend(
@@ -80,8 +93,10 @@ if rl:
         facecolor="white",
         framealpha=0.95,
         edgecolor="none",
-        fontsize=10,
-        loc="lower right",
+        fontsize=9,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.2),
+        ncol=2,
     )
     rows = []
     for scenario in data["scenarios"]:
@@ -91,6 +106,8 @@ if rl:
                 for r in data["evaluation"]
                 if r["scenario"] == scenario["id"] and r["method"] == method
             ]
+            if not values:
+                continue
             scores = [r["return"] for r in values]
             rows.append(
                 f"<tr><td>{scenario['id'].capitalize()}</td><td>{label}</td>"
@@ -108,8 +125,10 @@ if rl:
     base = statistics.mean(r["return"] for r in data["evaluation"] if r["method"] == "baseline")
     learned = statistics.mean(r["return"] for r in data["evaluation"] if r["method"] == "learned")
     gain = (learned / base - 1) * 100
-    result_intro = f"The recreated SAC policy achieved a mean held-out return of {learned:.1f}, compared with {base:.1f} for the fixed-reference planner ({gain:+.1f}%). These are small-scale results from this implementation, not the paper’s reported benchmark."
-    result_detail = "The fixed planner requests 32 m/s at track center, equal to the learned policy’s speed limit. Each method uses the same five held-out seeds (10000–10004) for each of three tasks: 45 episodes in total. The replay always shows seed 10000. Dots show individual test episodes; bars show means. Validation uses three separate seeds (8000–8002). The best validation checkpoint was selected before test evaluation."
+    result_intro = f"The general SAC policy achieved a mean held-out return of {learned:.1f}, compared with {base:.1f} for the fixed-reference planner ({gain:+.1f}%). These are small-scale results from this implementation, not the paper’s reported benchmark."
+    result_detail = "The fixed planner requests 32 m/s at track center, equal to the learned policy’s speed limit. Each method uses the same five held-out seeds (10000–10004) for each of three tasks: 45 general-comparison episodes. The replay always shows seed 10000. Dots show individual test episodes; bars show means. Validation uses three separate seeds (8000–8002). The best validation checkpoint was selected before test evaluation."
+    if data.get("defense_training"):
+        result_detail += " A separately trained defensive SAC specialist adds five blocking-only tests. Its auxiliary training reward encourages lane coverage and actually slowing challengers; these test returns use the unmodified progress/rank reward. It is not pooled into the general-policy result or claimed as the paper’s training recipe."
     figure_alt = "Actual validation learning curve and held-out episode returns for fixed MPP, initial policy, and trained SAC across three driving tasks"
 else:
     fig, axes = plt.subplots(1, 2, figsize=(12, 4), layout="constrained")
@@ -181,6 +200,8 @@ else:
         for r in sc["runs"]
     ]
 for label, records in groups:
+    if not records:
+        continue
     interaction_rows.append(
         f"<tr><td>{label}</td><td>{statistics.mean(r['defensive_moves'] for r in records):.1f}</td><td>{statistics.mean(r['held_up_vehicle_seconds'] for r in records):.1f}</td><td>{statistics.mean(r['opponent_passes'] for r in records):.1f}</td></tr>"
     )
@@ -189,6 +210,59 @@ interaction_table = (
     + "".join(interaction_rows)
     + "</tbody>"
 )
+
+blocking_figure = ""
+if data.get("defense_training"):
+    scenario = next(s for s in data["scenarios"] if s["id"] == "blocking")
+    baseline = next(r for r in scenario["runs"] if r["id"] == "baseline")
+    defensive = next(
+        r
+        for r in scenario["runs"]
+        if r["id"] == ("defense_limited" if data.get("defense_reference_limit") else "defense")
+    )
+    fig, ax = plt.subplots(1, 2, figsize=(12, 4), layout="constrained")
+    for run, label, color in [
+        (baseline, "Fixed MPP", "#72877c"),
+        (defensive, "Defensive SAC", "#2166ac"),
+    ]:
+        gap = [other[0][0] - ego[0] for ego, other in zip(run["states"], run["opponents"])]
+        ax[0].plot(run["time"], gap, label=label, color=color, lw=2)
+    ax[0].axhline(0, color="#526170", lw=1, ls="--")
+    ax[0].set(
+        title="First challenger: relative distance",
+        xlabel="Time (s)",
+        ylabel="Opponent distance ahead (m)",
+    )
+    ax[1].plot(
+        defensive["time"],
+        [x[1] for x in defensive["states"]],
+        label="Ego · defensive SAC",
+        color="#2166ac",
+        lw=2,
+    )
+    ax[1].plot(
+        defensive["time"],
+        [x[0][1] for x in defensive["opponents"]],
+        label="First challenger",
+        color="#b44819",
+        lw=2,
+    )
+    ax[1].set(
+        title="Defensive run: covering the passing line",
+        xlabel="Time (s)",
+        ylabel="Lateral position (m)",
+        ylim=(-6, 6),
+    )
+    for axis in ax:
+        axis.set_xlim(0, 24)
+        axis.legend(frameon=False, fontsize=10)
+        axis.grid(axis="y", color="#e3e9ee")
+    fig.savefig(ROOT / "docs/assets/blocking.svg", bbox_inches="tight", metadata={"Date": None})
+    path = ROOT / "docs/assets/blocking.svg"
+    path.write_text("\n".join(line.rstrip() for line in path.read_text().splitlines()) + "\n")
+    fig.savefig(ROOT / "docs/assets/blocking.png", dpi=160, bbox_inches="tight")
+    plt.close(fig)
+    blocking_figure = '<h3>Blocking from the same initial traffic</h3><img class="figure" src="assets/blocking.svg" width="1200" height="400" loading="lazy" alt="First challenger distance ahead for fixed MPP and defensive SAC, alongside actual lateral positions in the defensive run"><p class="figure-note">Seed 10000 is shown for both controllers. Defensive SAC uses the limited-reference diagnostic when available. This limit was introduced after inspecting failed runs; it is not an untouched test comparison. Positive distance means the challenger’s center is ahead. Pass events additionally require 4.6 m of clearance. The right panel shows actual motion, not reference commands. Opponents react to the ego, so their realized trajectories differ between controllers. Curves end if an episode fails.</p>'
 
 publication = f'''<aside class="publication"><span class="tag">European Control Conference · ECC 2023</span>
 <h3>A Hierarchical Approach for Strategic Motion Planning in Autonomous Racing</h3>
@@ -251,7 +325,7 @@ flow_markup = "".join(
     for i, (title, text) in enumerate(flow)
 )
 command = (
-    "# Put the improved vehicle_gym checkout beside this repository\npython3 -m venv .venv\nsource .venv/bin/activate\npip install -e ../vehicle_gym -e '.[train,dev]'\npython -m hilepp.evaluate --checkpoint-dir checkpoints\npython -m hilepp.train --steps 18000 --seed 7 --output checkpoints/new-run\npython -m http.server 8000 --directory docs"
+    "# Put the improved vehicle_gym checkout beside this repository\npython3 -m venv .venv\nsource .venv/bin/activate\npip install -e ../vehicle_gym -e '.[train,dev]'\npython -m hilepp.evaluate --checkpoint-dir checkpoints --defense-dir checkpoints/defense --defense-reference-limit 1.0\npython -m hilepp.train --steps 18000 --seed 7 --output checkpoints/new-run\npython -m http.server 8000 --directory docs"
     if rl
     else "python3 -m venv .venv\nsource .venv/bin/activate\npip install -e '.[visualization,dev]'\npython -m vehiclegym.demo\npython -m pytest\npython -m http.server 8000 --directory docs"
 )
@@ -265,9 +339,16 @@ impl_points = (
     if rl
     else "<li>Lazy optional imports and complete package discovery, including track resources.</li><li>Independent planning snapshots, full reference-shape validation, and separating-axis rectangle collision checks.</li><li>Examples separated from regression tests; corrected module names retain compatibility imports.</li>"
 )
+defense_note = ""
+if data.get("defense_training"):
+    training = data["defense_training"]
+    defense_note = f'<div class="notice"><strong>Additional defensive training experiment.</strong> The general policy uses the original recreation reward. A separate blocking specialist starts from a general SAC actor and trains for {training["completed_steps"]:,} more interactions with an auxiliary reward: 0.75 × challenger-line coverage + 0.75 × held-up opponent count. Checkpoint selection and test evaluation use the unmodified progress/rank reward. Select “Defensive SAC · auxiliary reward” in the blocking example. This is an explicit training extension, not a recovered paper result.</div>'
+if data.get("defense_reference_limit"):
+    defense_note += f'<div class="notice"><strong>Reference-limit diagnostic.</strong> The limited-reference variant uses the same defensive neural policy, with its requested lateral position clipped to within {data["defense_reference_limit"]:.1f} m of the measured ego position before each MPC solve. It changes neither the obstacle constraints nor the collision checks. The limiter was introduced after inspecting failed runs, so its five repeated scenarios are diagnostic evidence, not untouched held-out tests. The unrestricted policy and its failures remain available in the selector and table.</div>'
+    result_detail += " Five further diagnostic runs use the same defensive actor with a 1 m lateral-reference limit chosen after inspecting failures. These repeats are not untouched held-out tests."
 limits = "<li>CasADi/IPOPT replaces the original acados/HPIPM solver in these runs.</li><li>Opponents use a gap-seeking passing controller with car following, not the paper’s opponent MPC. Blocking opponents target 34–36 m/s while the ego is limited to 32 m/s.</li><li>Obstacle ellipses are expressed in Frenet coordinates with bounded slack (0–0.08). Collision checks use oriented Cartesian rectangles. The reported Frenet separation is a diagnostic proxy, not Euclidean clearance.</li><li>Opponent predictions follow the paper’s role distinction, with a simplified midpoint integrator and lateral clipping. No recursive-feasibility terminal set or safety guarantee. Synthetic circuit sections and short episodes replace the paper’s larger benchmark.</li>"
 checkpoint_link = (
-    '<a href="data/evaluation.json" download>All 45 test records</a>'
+    '<a href="data/evaluation.json" download>All test records</a>'
     if rl
     else '<a href="data/experiment.json" download>All nine simulation records</a>'
 )
@@ -292,14 +373,14 @@ page = f'''<!doctype html>
 <p class="explanation" id="overlay-explanation" aria-live="polite"></p>
 <div class="research-grid"><article class="card"><h3>What the optimizer plans</h3><p>The blue path is the ego’s current 3-second plan. Only its first 0.25-second control is applied. At the next control step, the planner observes every car and solves again. A translucent blue car marks the selected future time in this current plan; it is not a forecast being scored against later ego motion.</p></article><article class="card"><h3>What the optimizer assumes</h3><p>The orange paths are the <em>other vehicles’</em> trajectories supplied to the obstacle constraints in that same solve. Leaders and alongside cars retain their measured speed and heading error. A car fully behind the ego is assumed to brake to a stop, following the role distinction in Section IV-B.3 of the paper. This is a feasibility assumption about yielding, not a prediction of intent.</p></article></div>
 <details><summary>Compare an opponent assumption with what actually happened</summary><p>Choose “Hold an opponent assumption for 3 s.” Its orange ghost and the corresponding solid opponent then show the <em>same timestamp</em>. The ghost follows the assumption recorded at the start of that window. Separation shows how the actual opponent departed from that assumption. A braking follower normally diverges because it does not actually have to brake. This diagnostic never freezes the controller: MPC continues to replan every 0.25 s.</p></details>
-<div class="event-panel"><h3>Passes and defensive interactions</h3><p id="interaction-summary"></p><div id="events" class="event-list" aria-label="Jump to a recorded driving event"></div><p class="small muted">Click an event to pause one second before it. A measured defensive move requires more than 0.8 m of ego lateral motion toward an approaching challenger’s line over two seconds, while that challenger is held below its target speed. Events are diagnostics; they do not add a training reward.</p></div>
-<div class="plots"><article class="plot"><h3>Ego speed and requested speed</h3><div id="speed-plot"></div><p>Blue: actual speed. Dashed gray: reference supplied to MPC.</p></article><article class="plot"><h3>Ego lateral position and reference</h3><div id="lateral-plot"></div><p>Blue: actual position across the track. Dashed gray: requested lateral position.</p></article><article class="plot"><h3>Which car is ahead?</h3><div id="gap-plot"></div><p>Each curve is an opponent’s distance ahead of the ego, using its car color. Crossing zero changes center order; a pass event requires a full car length of clearance.</p></article><article class="plot"><h3>Is the challenger being held up?</h3><div id="opponent-speed-plot"></div><p>Selected opponent’s actual speed versus its free-running target. The event summary counts time spent slowed behind the ego; general speed loss alone does not establish blocking.</p></article></div>
+<div class="event-panel"><h3>Passes and defensive interactions</h3><p id="interaction-summary"></p><div id="events" class="event-list" aria-label="Jump to a recorded driving event"></div><p class="small muted">Click an event to pause one second before it. A measured defensive move requires more than 0.8 m of ego lateral motion toward an approaching challenger’s line over two seconds, while that challenger is held below its target speed. These event counts are diagnostics.</p></div>
+<div class="plots"><article class="plot"><h3>Ego speed and requested speed</h3><div id="speed-plot"></div><p>Blue: actual speed. Dashed gray: reference supplied to MPC.</p></article><article class="plot"><h3>Ego lateral position and reference</h3><div id="lateral-plot"></div><p>Blue: actual position. Dashed gray: reference supplied to MPC. Purple, when present: the neural policy’s original request before the 1 m limit.</p></article><article class="plot"><h3>Which car is ahead?</h3><div id="gap-plot"></div><p>Each curve is an opponent’s distance ahead of the ego, using its car color. Crossing zero changes center order; a pass event requires a full car length of clearance.</p></article><article class="plot"><h3>Is the challenger being held up?</h3><div id="opponent-speed-plot"></div><p>Selected opponent’s actual speed versus its free-running target. The event summary counts time spent slowed behind the ego; general speed loss alone does not establish blocking.</p></article></div>
 <noscript>Interactive playback requires JavaScript. <a href="assets/driving-scene.png">View a recorded scene</a> or download the evaluation data below.</noscript></section>
-<section class="section" id="research"><p class="eyebrow">Research contribution · ECC 2023</p><h2 class="research-title">A Hierarchical Approach for Strategic Motion Planning in Autonomous Racing</h2><p class="explanation">{research_text}</p>
+<section class="section" id="research"><p class="eyebrow">Research contribution · ECC 2023</p><h2 class="research-title">A Hierarchical Approach for Strategic Motion Planning in Autonomous Racing</h2><p class="explanation">{research_text}</p>{defense_note}
 <div class="research-grid"><article class="card"><h3>{"Implemented in this recreation" if rl else "Repository improvements"}</h3><ul>{impl_points}</ul></article><article class="card"><h3>Differences from the paper</h3><ul>{limits}</ul></article></div><div class="links"><a href="{paper}">IEEE publication ↗</a><a href="https://publications.syscop.de/Reiter2023.pdf">Author manuscript</a><a href="https://rudolfreiter.github.io/hilepp_vis/">Original project page</a></div></section>
-<section class="section" id="results"><div class="section-head"><h2>{"Held-out car evaluation" if rl else "Car example evaluation"}</h2><p>{"One training seed · three tasks · five test seeds per task" if rl else "Three references · three tasks · one fixed seed"}</p></div><p>{result_intro}</p>
-<img class="figure" src="assets/evaluation.svg" width="1200" height="400" loading="lazy" alt="{figure_alt}"><p class="figure-note">{result_detail}</p><div class="table-scroll"><table><caption class="small muted">{"Held-out evaluation; lower final rank is better." if rl else "Recorded fixed-reference simulations; lower final rank is better."}</caption>{table}</table></div>
-<h3>Measured blocking behavior</h3><div class="table-scroll"><table>{interaction_table}</table></div><p class="small muted">Mean counts and durations per episode. Held-up vehicle-seconds sum over challengers: more than one can be slowed at once. Read these alongside completion and failures; an early failure is not successful defense.</p>
+<section class="section" id="results"><div class="section-head"><h2>{"Car evaluation and diagnostic experiments" if rl else "Car example evaluation"}</h2><p>{"One training seed · three tasks · five test seeds per task" if rl else "Three references · three tasks · one fixed seed"}</p></div><p>{result_intro}</p>
+<img class="figure" src="assets/evaluation.svg" width="1200" height="400" loading="lazy" alt="{figure_alt}"><p class="figure-note">{result_detail}</p><div class="table-scroll"><table><caption class="small muted">{"General comparison plus separately labeled diagnostic variants; lower final rank is better." if rl else "Recorded fixed-reference simulations; lower final rank is better."}</caption>{table}</table></div>
+{blocking_figure}<h3>Measured blocking behavior</h3><div class="table-scroll"><table>{interaction_table}</table></div><p class="small muted">Mean counts and durations per episode. Held-up vehicle-seconds sum over challengers: more than one can be slowed at once. Read these alongside completion and failures; an early failure is not successful defense.</p>
 <p class="small muted">Completion, solver failures, and collisions are reported for every method above. This finite evaluation does not establish safety. A rejected optimizer solution ends the episode before its control is applied. Return combines forward progress and the number of opponents behind the ego.</p><div class="links">{checkpoint_link}<a href="data/experiment.json" download>Replay data · JSON</a><a href="assets/evaluation.svg" download>Download figure · SVG</a><a href="assets/driving-scene.png" download>Download driving scene</a></div></section>
 <section class="section" id="reproduce"><div class="section-head"><h2>Run the research</h2><p>{"Use the included new checkpoint, retrain SAC, or connect your own normalized policy to the planner." if rl else "Install the portable backend and regenerate every recorded driving scene with one command."}</p></div><pre><code>{html.escape(command)}</code></pre>
 <details><summary>Numerical setup and provenance</summary><p>Python 3.9 · NumPy 1.26.4 · SciPy 1.13.1 · CasADi 3.8.1 / IPOPT{" · PyTorch 2.8.0 on CPU" if rl else ""}. The planner uses 12 intervals of 0.25 s, a five-state Frenet model, RK4 integration, and three opponents. Simulation uses five substeps per interval. Full settings, checkpoint provenance, and limitations are documented in the repository.</p></details>

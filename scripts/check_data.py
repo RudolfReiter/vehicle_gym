@@ -22,6 +22,15 @@ for scenario in data["scenarios"]:
         assert len(run["applied_controls"]) == len(run["states"]) - 1
         assert len(run["interactions"]) == len(run["plans"])
         assert run["episode_limit_s"] == 24
+        if "reference_limit_m" in run:
+            assert len(run["raw_lateral_references"]) == len(run["references"])
+            for i, reference in enumerate(run["references"]):
+                n = run["states"][i][1]
+                limit = run["reference_limit_m"]
+                assert abs(reference["lateral"] - n) <= limit + 1e-9
+                assert reference["lateral"] == max(
+                    n - limit, min(n + limit, run["raw_lateral_references"][i])
+                )
         assert run["time"][0] == 0
         assert all(b > a for a, b in zip(run["time"], run["time"][1:]))
         assert run["metrics"]["duration_s"] == run["time"][-1]
@@ -62,7 +71,17 @@ if data["kind"] == "hilepp":
     assert all(episode["seed"] < 7000 for episode in training["episodes"])
     selected = max(training["validation"], key=lambda v: v["return"])
     assert selected["step"] == training["selected_step"]
-    assert len(data["evaluation"]) == len(data["test_seeds"]) * 9
+    assert len(data["evaluation"]) == len(data["test_seeds"]) * (
+        9 + int(bool(data.get("defense_training"))) + int(bool(data.get("defense_reference_limit")))
+    )
+    if data.get("defense_training"):
+        defensive = data["defense_training"]
+        assert set(data["test_seeds"]).isdisjoint(defensive["validation_seeds"])
+        assert (
+            defensive["selected_step"]
+            == max(defensive["validation"], key=lambda v: v["return"])["step"]
+        )
+        assert all(episode["seed"] < 7000 for episode in defensive["episodes"])
     records = json.loads((docs / "data/evaluation.json").read_text())
     assert records == data["evaluation"]
     for scenario in data["scenarios"]:
