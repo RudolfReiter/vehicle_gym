@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 data = json.loads((ROOT / "docs/data/experiment.json").read_text())
 rl = data["kind"] == "hilepp"
 name = "HILEPP" if rl else "vehicle_gym"
-repo = "hilepp" if rl else "vehicle_gym"
+repo = "hilepp-recreated" if rl else "vehicle_gym"
 paper = "https://ieeexplore.ieee.org/document/10178143"
 plt.rcParams.update(
     {
@@ -269,7 +269,7 @@ page = f'''<!doctype html>
 <section class="section" id="reproduce"><div class="section-head"><h2>Run the research</h2><p>{"Use the included new checkpoint, retrain SAC, or connect your own normalized policy to the planner." if rl else "Install the portable backend and regenerate every recorded driving scene with one command."}</p></div><pre><code>{html.escape(command)}</code></pre>
 <details><summary>Numerical setup and provenance</summary><p>Python 3.9 · NumPy 1.26.4 · SciPy 1.13.1 · CasADi 3.8.1 / IPOPT{" · PyTorch 2.8.0 on CPU" if rl else ""}. The planner uses 12 intervals of 0.25 s, a five-state Frenet model, RK4 integration, and three opponents. Simulation uses five substeps per interval. Full settings, checkpoint provenance, and limitations are documented in the repository.</p></details>
 <details><summary>What is included in the repositories?</summary><p>Python source, regression tests, recorded evaluations, editable web visualization, a scientific figure generator, citation metadata, and GitHub Pages deployment. {"The HILEPP wrapper depends on the improved vehicle_gym package instead of duplicating its dynamics or planner." if rl else "The original acados planner and demonstration scripts remain available as an optional legacy stack."}</p></details>
-<div class="links"><a href="https://github.com/RudolfReiter/{repo}">Repository ↗</a><a href="assets/source.zip" download>Download source archive</a><a href="https://github.com/RudolfReiter/{"vehicle_gym" if rl else "hilepp"}">{"vehicle_gym foundation" if rl else "HILEPP policy wrapper"} ↗</a></div></section>
+<div class="links"><a href="https://github.com/RudolfReiter/{repo}">Repository ↗</a><a href="assets/source.zip" download>Download source archive</a><a href="https://github.com/RudolfReiter/{"vehicle_gym" if rl else "hilepp-recreated"}">{"vehicle_gym foundation" if rl else "HILEPP policy wrapper"} ↗</a></div></section>
 </div></main><footer><div class="wrap footer-row"><p>Rudolf Reiter · Autonomous racing research</p><p>{"Recreated implementation · Not the original HILEPP repository" if rl else "vehicle_gym · Original models, improved research interface"}</p></div></footer>
 <script src="data/experiment.js"></script><script src="scene.js"></script><script src="app.js"></script></body></html>'''
 (ROOT / "docs/index.html").write_text(page)
