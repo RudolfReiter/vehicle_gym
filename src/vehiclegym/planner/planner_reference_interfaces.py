@@ -31,24 +31,14 @@ class CostInterfaceOptions:
 
 def check_ref_matrix_sizes(ref_values: ReferenceValues,
                            ref_options: CostInterfaceOptions) -> bool:
-    valid = True
-    shape_Q = ref_values.Q.shape
-    shape_Q_n = ref_values.Q_n.shape
-    shape_R = ref_values.R.shape
-    shape_x_ref = ref_values.x_ref.shape
-    shape_u_ref = ref_values.u_ref.shape
-    n_nodes = ref_options.time_grid.__len__()
-    if len(shape_Q) != 3 or len(shape_Q_n) != 2 or \
-            len(shape_R) != 3 or len(shape_x_ref) != 2 or \
-            len(shape_u_ref) != 2:
-        valid = False
-    if shape_Q[0] != n_nodes - 1 or \
-            shape_u_ref[0] != n_nodes - 1 or \
-            shape_R[0] != n_nodes - 1 or \
-            shape_x_ref[0] != n_nodes or \
-            shape_u_ref[0] != n_nodes - 1:
-        valid = False
-    return valid
+    """Validate complete shapes before indexing any array dimensions."""
+    nodes = len(ref_options.time_grid)
+    nx, nu = len(ref_options.q0), len(ref_options.r0)
+    shapes = {"Q": (nodes-1,nx,nx), "Q_n": (nx,nx), "R": (nodes-1,nu,nu),
+              "x_ref": (nodes,nx), "u_ref": (nodes-1,nu)}
+    return all(np.shape(getattr(ref_values,key)) == shape
+               and np.isfinite(getattr(ref_values,key)).all()
+               for key,shape in shapes.items())
 
 
 def repeat_memoryless(arr, count):
@@ -74,7 +64,7 @@ class CostInterface(ABC):
         if self.options.check_sizes:
             valid = check_ref_matrix_sizes(reference_values, self.options)
             if not valid:
-                Exception()
+                raise ValueError("Reference matrices have inconsistent shapes or non-finite values")
         return reference_values
 
     @abstractmethod

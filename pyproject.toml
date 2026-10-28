@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vehiclegym"
+version = "1.1.0"
+description = "Vehicle models, predictive planning, and reproducible racing simulations"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name = "Rudolf Reiter"}]
+dependencies = ["numpy>=1.24,<3", "scipy>=1.10,<2", "casadi>=3.7,<4", "dataclasses-json>=0.6,<1"]
+
+[project.optional-dependencies]
+visualization = ["matplotlib>=3.7,<4", "pandas>=1.5", "seaborn>=0.13"]
+legacy = ["omegaconf>=2.1", "get-project-root", "commonroad-vehicle-models", "PyQt5", "matplotlib>=3.7", "pandas", "seaborn"]
+dev = ["pytest>=7,<9", "build>=1", "ruff>=0.9"]
+
+[project.scripts]
+vehicle-gym-demo = "vehiclegym.demo:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["vehiclegym*", "vehicle_models*", "data*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+data = ["racetracks/*.csv", "parameter/**/*.json"]
+vehicle_models = ["parameters/*.json"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests/unit"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

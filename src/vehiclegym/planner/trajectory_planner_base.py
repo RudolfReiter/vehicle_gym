@@ -72,7 +72,7 @@ class PlanningData:
     x: np.ndarray = field(default_factory=lambda:np.array([]))
     u: np.ndarray = field(default_factory=lambda:np.array([]))
     x_opp_predicted: np.ndarray = field(default_factory=lambda:np.array([]))
-    x_opp_predicted_all: list = field(default_factory=[])
+    x_opp_predicted_all: list = field(default_factory=list)
     t: np.ndarray = field(default_factory=lambda:np.array([]))
     slacks2: np.ndarray = field(default_factory=lambda:np.array([]))
     slacks1: np.ndarray = field(default_factory=lambda:np.array([]))
@@ -154,7 +154,7 @@ class Planner(ABC):
         self.current_slack = None
 
     def get_formatted_solution(self, t0: float = 0) -> PlanningData:
-        data = PlanningData
+        data = PlanningData()
         data.x = copy(self.x_full)
         data.u = copy(self.u_full)
         data.x_opp_predicted = copy(self.x_opp_prediction)

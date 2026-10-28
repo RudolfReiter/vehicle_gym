@@ -1,7 +1,6 @@
 import casadi as cs
 from vehicle_models.model_kinematic import (KinematicVehicleModel,
                                             KinematicModelParameters)
-from acados_template import AcadosModel
 
 
 class KinematicModelCartesian(KinematicVehicleModel):

@@ -7,7 +7,7 @@ import casadi as cs
 import numpy as np
 import scipy
 from typing import List
-from vehiclegym.planner.predicitor import Predictor
+from vehiclegym.planner.predictor import Predictor
 from acados_template import AcadosOcp, AcadosOcpSolver
 
 from vehicle_models.model_kinematic import KinematicModelParameters

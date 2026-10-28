@@ -1,0 +1,25 @@
+name: Test portable vehicle model and planner
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.9', '3.11']
+    env:
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e '.[dev]'
+      - run: python -m pytest
+      - run: bash scripts/check_style.sh
+      - run: python -m build --wheel
+      - run: node scripts/check_interactions.mjs
+      - run: python scripts/build_site.py
+      - run: python scripts/check_data.py

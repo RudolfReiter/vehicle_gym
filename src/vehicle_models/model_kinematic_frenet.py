@@ -4,7 +4,6 @@ from typing import List
 from vehicle_models.utils import get_circle_rect_cover, halfspace, get_vertices_rectangle
 import casadi as cs
 import numpy as np
-from acados_template import AcadosModel
 from vehicle_models.model_kinematic import (KinematicVehicleModel,
                                             KinematicModelParameters)
 from typing import List, Tuple, TYPE_CHECKING
