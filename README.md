@@ -2,7 +2,7 @@
 
 **Vehicle dynamics, nonlinear predictive planning, and reproducible driving scenes.**
 
-[Research page](https://rudolfreiter.github.io/vehicle_gym/) · [ECC 2023 paper](https://ieeexplore.ieee.org/document/10178143) · [Author manuscript](https://publications.syscop.de/Reiter2023.pdf) · [HILEPP wrapper](https://github.com/RudolfReiter/hilepp-recreated)
+[Research page](https://rudolfreiter.github.io/vehicle_gym/) · [ECC 2023 paper](https://ieeexplore.ieee.org/document/10178143) · [Author manuscript](https://publications.syscop.de/Reiter2023.pdf) · [HILEPP wrapper](https://github.com/RudolfReiter/hilepp)
 
 ![Actual simulated traffic and a fixed forecast](docs/assets/driving-scene.png)
 
