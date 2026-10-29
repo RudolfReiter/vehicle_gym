@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import zlib from 'node:zlib';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'),
@@ -17,7 +18,7 @@ const context = new Proxy({
 class Element {
   constructor(id = '') {
     this.id = id;
-    this.value = id === 'rate' ? '1' : '';
+    this.value = id === 'rate' ? '1' : id === 'execution' ? 'sampled' : '';
     this.checked = id === 'predictions';
     this.children = [];
     this.attributes = {};
@@ -26,7 +27,7 @@ class Element {
   }
   append(...children) {
     this.children.push(...children);
-    if (['method', 'track', 'seed', 'focus'].includes(this.id) && !this.value && children[0]) this.value = String(children[0].value);
+    if (['method', 'track', 'seed', 'focus', 'execution'].includes(this.id) && !this.value && children[0]) this.value = String(children[0].value);
   }
   replaceChildren(...children) {
     this.children = [];
@@ -129,6 +130,16 @@ assert.equal(window.RaceViewer.getState().playing, false);
 const end = window.RaceViewer.getState().time;
 tick();
 assert.equal(window.RaceViewer.getState().time, end);
+if (manifest.kind === 'hilepp') {
+  get('execution').value = 'mean';
+  get('execution').onchange();
+  await ready();
+  assert.equal(window.RaceViewer.getState().execution, 'mean');
+  get('execution').value = 'sampled';
+  get('execution').onchange();
+  await ready();
+  assert.equal(window.RaceViewer.getState().execution, 'sampled');
+}
 get('track').value = 'Sepang';
 get('track').onchange();
 await ready();
@@ -136,4 +147,24 @@ assert.equal(window.RaceViewer.getState().time, 0);
 assert.ok(!html.includes('ghost'));
 assert.ok(!ids.has('scenario'));
 assert.ok(!ids.has('probe'));
+for (const track of [...new Set(manifest.runs.map(entry => entry.track))]) {
+  const entry = manifest.runs.find(r => r.track === track),
+    run = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(root, 'docs/data', entry.file))));
+  const geometry = new window.CircuitGeometry(run.track);
+  for (let i = 0; i < geometry.s.length; i += 29) {
+    const a = geometry.point(geometry.s[i] - .0001, 3),
+      b = geometry.point(geometry.s[i] + .0001, 3);
+    assert.ok(Math.hypot(a[0] - b[0], a[1] - b[1]) < .001, 'Position must stay continuous across circuit nodes');
+    assert.ok(Math.hypot(Math.sin(a[2]) - Math.sin(b[2]), Math.cos(a[2]) - Math.cos(b[2])) < .0001, 'Heading must stay continuous across circuit nodes');
+  }
+  const scene = new window.RaceScene(get('scene'));
+  scene.setRun(run);
+  const t = Math.min(10, run.metrics.duration_s / 2);
+  scene.render(t);
+  const point = geometry.point(run.states[Math.floor(t / run.dt)][0][0]),
+    a = scene.project(point);
+  scene.render(t + .0001);
+  const b = scene.project(point);
+  assert.ok(Math.hypot(a[0] - b[0], a[1] - b[1]) < .1, 'Camera continuity');
+}
 console.log('Verified method/circuit selection, loading compressed replays, focus, seek, playback, hidden-tab time freeze and no automatic loop. Browser layout remains unverified.');

@@ -123,8 +123,11 @@ for (const key of ['fillStyle', 'strokeStyle', 'lineWidth', 'globalAlpha', 'font
     this.state[key] = v;
   }
 });
-const manifest = JSON.parse(fs.readFileSync(path.join(root, 'docs/data/manifest.json'), 'utf8'));
-const replay = process.argv[2] || path.join(root, 'docs/data', manifest.runs[0].file);
+let replay = process.argv[2];
+if (!replay) {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'docs/data/manifest.json'), 'utf8'));
+  replay = path.join(root, 'docs/data', manifest.runs[0].file);
+}
 const run = JSON.parse(zlib.gunzipSync(fs.readFileSync(replay)));
 const sandbox = {
   window: {
@@ -154,6 +157,6 @@ scene.render(time);
 context.font = '16px sans-serif';
 context.fillStyle = '#24333b';
 context.textAlign = 'left';
-context.fillText(`${run.method} · ${run.track.name} · six independent controllers · t = ${time.toFixed(1)} s`, 28, 35);
+context.fillText(`${run.method}${run.execution ? ' · ' + run.execution.mode : ''} · ${run.track.name} · six independent controllers · t = ${time.toFixed(1)} s`, 28, 35);
 fs.writeFileSync(path.join(out, 'snapshot.svg'), context.output());
 console.log('Exported actual circuit renderer to artifacts/scenes/snapshot.svg');

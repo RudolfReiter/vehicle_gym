@@ -55,7 +55,7 @@
 <canvas id="scene" aria-label="Six-car race on the selected circuit. Use the adjacent timing table and timeline for the recorded state.">
 </canvas>
 <div class="stage-label">
-<span id="circuit-name">Sepang</span>
+<span id="circuit-name">IMS</span>
 <span id="race-clock">0:00.0</span>
 <span id="race-state">Loading recorded race…</span>
 </div>
@@ -146,23 +146,20 @@
 </tr>
 </tbody>
 </table>
-<p>Every opponent uses MPC in every comparison. The ego MPC horizon changes with its references and weights. The dashed obstacle trajectories update at each control step; after a pass, the follower is assumed able to brake. This feasibility assumption does not assert that the follower intends to brake.</p>
+<p>All six racing policies use fixed references and weights, with different target speeds and lateral offsets. There is no reinforcement learning in this experiment. Each current MPC plan responds to traffic and circuit curvature. Obstacle trajectories update at every control step; after a pass, the follower is assumed able to brake. This feasibility assumption does not assert that the follower intends to brake.</p>
 <div class="protocol" id="protocol">
 </div>
 <details>
 <summary>Numerical implementation and reproducibility</summary>
-<p>acados SQP, the original vehicle_gym kinematic Frenet model, soft state and obstacle constraints, and an approximate terminal condition. Track coordinates come from the packaged IMS and Sepang datasets, periodically smoothed over 6 m. Published failures remain in the evaluation. This experiment uses a reduced training budget and discretization; it does not reproduce the paper’s quantitative results.</p>
-<p>Download the replay for measured states, commands, every controller’s horizon, obstacle assumptions and solver diagnostics. See the repository for training seeds, checkpoint hashes and commands.</p>
+<p>acados SQP, the original vehicle_gym kinematic Frenet model, soft state and obstacle constraints, and an approximate terminal condition. Track coordinates come from the packaged IMS and Sepang datasets, periodically smoothed over 6 m. Published failures remain in the evaluation. The 25-interval, 5-second horizon is a numerical recreation; it does not establish recursive safety.</p>
+<p>Download the replay for measured states, commands, every controller’s horizon, obstacle assumptions and solver diagnostics. The repository documents race seeds, controller parameters and reproduction commands.</p>
 <a id="download" download>Download this race (.json.gz)</a> · <a href="data/manifest.json">Evaluation manifest</a>
 </details>
 </section>
 <section id="results">
 <h2>Recorded evaluation</h2>
-<p id="evaluation-note">All published seeds are shown, including early terminations. Finishing position is measured at the recorded end time; it is not comparable across different survival times.</p>
-<figure class="evaluation-figure">
-<img src="assets/evaluation.svg" alt="Individual evaluation seeds: recorded duration and ego progress on IMS and Sepang. Crosses denote early terminations.">
-<figcaption>One point per seed. A cross marks an early termination by any vehicle.</figcaption>
-</figure>
+<p id="evaluation-note">Car 01 is the ego in the table. All published seeds are shown, including early terminations. Finishing position is measured at the recorded end time; it is not comparable across different survival times.</p>
+
 <div class="table-scroll">
 <table>
 <thead>
@@ -171,9 +168,9 @@
 <th>Policy</th>
 <th>Seed</th>
 <th>Time</th>
-<th>Progress</th>
-<th>Position</th>
-<th>Passes</th>
+<th>Ego progress</th>
+<th>Ego position</th>
+<th>Ego passes</th>
 <th>Outcome</th>
 </tr>
 </thead>

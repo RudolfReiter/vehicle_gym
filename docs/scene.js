@@ -10,6 +10,16 @@
       this.s = track.s;
       this.xy = track.xy;
       this.length = track.length;
+      // Interpolate tangents as well as positions; segment-wise headings cause visible ticks.
+      const count = this.xy.length - 1;
+      this.headings = this.xy.map((point, i) => {
+        const before = this.xy[(i + count - 1) % count],
+          after = this.xy[(i + 1) % count];
+        return Math.atan2(after[1] - before[1], after[0] - before[0]);
+      });
+      for (let i = 1; i < this.headings.length; i++) {
+        this.headings[i] = this.headings[i - 1] + mod(this.headings[i] - this.headings[i - 1] + Math.PI, 2 * Math.PI) - Math.PI;
+      }
       this.bounds = [Math.min(...this.xy.map(p => p[0])), Math.max(...this.xy.map(p => p[0])), Math.min(...this.xy.map(p => p[1])), Math.max(...this.xy.map(p => p[1]))];
     }
     point(s, n = 0) {
@@ -23,7 +33,7 @@
       const t = (s - this.s[lo]) / (this.s[hi] - this.s[lo]),
         a = this.xy[lo],
         b = this.xy[hi],
-        angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
+        angle = mix(this.headings[lo], this.headings[hi], t);
       return [mix(a[0], b[0], t) - Math.sin(angle) * n, mix(a[1], b[1], t) + Math.cos(angle) * n, angle];
     }
     states(run, time) {
@@ -150,14 +160,14 @@
       }
       if (chunk.length) chunks.push(chunk);
       const edge = (i, side, extra = 0) => {
-        const base = side > 0 ? run.track.left[i] : run.track.right[i],
+        const base = g.point(g.s[i], side * run.track.half_width),
           p = g.xy[i],
           d = Math.hypot(base[0] - p[0], base[1] - p[1]);
         return [base[0] + (base[0] - p[0]) * extra / d, base[1] + (base[1] - p[1]) * extra / d];
       };
       for (const indices of chunks) {
         if (indices.length < 2) continue;
-        const strip = (a, b, extra, color) => this.polygon([...indices.map(i => this.project(edge(i, a, extra))), ...indices.toReversed().map(i => this.project(edge(i, b, extra)))], color);
+        const strip = (a, b, extra, color) => this.polygon([...indices.map(i => this.project(edge(i, a, extra))), ...indices.slice().reverse().map(i => this.project(edge(i, b, extra)))], color);
         strip(1, -1, 8, '#bcbab0');
         strip(1, -1, 3.2, '#919891');
         strip(1, -1, .7, '#454b4e');

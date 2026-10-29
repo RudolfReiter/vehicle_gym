@@ -81,7 +81,7 @@ class CircuitRace:
         sources = []
         for vehicle, planner in enumerate(self.planners):
             ref = reference if vehicle == 0 and reference is not None else self.profiles[vehicle]
-            references.append(asdict(ref))
+            references.append(None if vehicle == 0 and direct_control is not None else asdict(ref))
             if vehicle == 0 and direct_control is not None:
                 control = np.asarray(direct_control, dtype=float)
                 if control.shape != (2,) or not np.isfinite(control).all():

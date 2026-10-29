@@ -79,7 +79,7 @@ def record_race(world, seed=20000, method="MPC", controller=None, start=0.0, pro
             name=method if i == 0 else f"MPC {i + 1:02}",
             controller=method if i == 0 else "MPC",
             color=VEHICLE_COLORS[i],
-            reference=asdict(world.profiles[i]),
+            reference=None if i == 0 and method == "SAC" else asdict(world.profiles[i]),
         )
         for i in range(world.count)
     ]

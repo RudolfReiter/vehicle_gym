@@ -26,6 +26,6 @@ The cyan curve is the selected controller's planned ego motion. Dashed yellow cu
 
 SQP iterates are accepted at status 0 or iteration-limit status 2 if state trajectories are finite and equality/inequality residuals are below 0.02. This is numerical acceptance, not an optimality or safety certificate. Complementarity and stationarity are optimization convergence measures and are not described as physical constraint violations.
 
-State and obstacle constraints are soft. Their slack can be positive even when the numerical problem is solved. Elliptical obstacle margins are 9 m longitudinally and 3.8 m laterally. Physical collisions use oriented 4.6 × 1.9 m rectangles and are checked at four integration substeps. Track exits also account for the body footprint.
+State and obstacle constraints are soft. Their slack can be positive even when the numerical problem is solved. Elliptical obstacle margins are 9 m longitudinally and 3.8 m laterally. Physical collisions use oriented 4.6 × 1.9 m rectangles and are checked at four integration substeps. Track exits also account for the body footprint. The rendered track edge follows the same conservative usable width as these checks, rather than displaying a wider corridor than the simulation permits.
 
 All race termination reasons and involved vehicle IDs are retained. The horizon shown at a failed terminal solve is not applied. A completed simulation is evidence about that rollout only, not a general safety guarantee.

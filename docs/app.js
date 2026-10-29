@@ -21,29 +21,49 @@
     return o;
   };
   methods.forEach(m => $('method').append(option(m, m)));
+  if (manifest.kind === 'hilepp') {
+    $('execution').replaceChildren();
+    const modes = [...new Set(manifest.runs.map(run => run.execution))];
+    modes.forEach(mode => $('execution').append(option(mode, mode === 'sampled' ? 'Sampled policy' : 'Mean action')));
+    $('execution').disabled = modes.length < 2;
+  }
   [...new Set(manifest.runs.map(r => r.track))].forEach(t => $('track').append(option(t, t === 'Sepang' ? 'Sepang · stress test' : t)));
   const outcome = m => m.completed ? 'Completed' : ({
     collision: 'Collision',
     track_exit: 'Track exit',
     solver_failure: 'Solver failure'
   }[m.stop.kind] || m.stop.kind) + (m.stop.vehicles.length ? ' · car ' + m.stop.vehicles.map(i => String(i + 1).padStart(2, '0')).join(', ') : '');
-  for (const record of manifest.evaluation) {
-    const row = document.createElement('tr'),
-      m = record.metrics;
-    for (const value of [record.track, record.method, record.seed, `${m.duration_s.toFixed(1)} s`, `${m.progress_m.toFixed(0)} m`, `${m.rank} / 6`, m.passes, outcome(m)]) {
-      const cell = document.createElement('td');
-      cell.textContent = value;
-      row.append(cell);
-    }
-    $('results-body').append(row);
+  function actorExecution() {
+    return manifest.kind === 'hilepp' ? $('execution').value : null;
   }
+  function matchesExecution(entry) {
+    return manifest.kind !== 'hilepp' || entry.execution === actorExecution();
+  }
+  function renderResults() {
+    $('results-body').replaceChildren();
+    for (const record of manifest.evaluation.filter(row => manifest.kind !== "hilepp" || row.execution === actorExecution())) {
+      const row = document.createElement('tr'),
+        m = record.metrics;
+      for (const value of [record.track, record.method, record.seed, `${m.duration_s.toFixed(1)} s`, `${m.progress_m.toFixed(0)} m`, `${m.rank} / 6`, m.passes, outcome(m)]) {
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        row.append(cell);
+      }
+      $('results-body').append(row);
+    }
+    if (manifest.kind === 'hilepp') {
+      $('results-mode').textContent = actorExecution() === 'sampled' ? '· sampled policies' : '· mean actions';
+      $('results-figure').src = `assets/evaluation-${actorExecution()}.svg`;
+    }
+  }
+  renderResults();
   if (manifest.training) {
-    $('training-note').textContent = Object.entries(manifest.training).map(([method, t]) => `${method}: ${t.steps.toLocaleString()} training interactions, ${t.gradient_updates.toLocaleString()} SAC updates, seed ${t.training_seed}`).join('. ') + '. Checkpoints are trained for this recreation, not supplied by the paper authors.';
+    $('training-note').textContent = Object.entries(manifest.training).map(([method, t]) => `${method}: ${t.steps.toLocaleString()} training interactions, ${t.gradient_updates.toLocaleString()} SAC updates${t.pretraining ? `, stage seeds ${t.pretraining.training_seed} and ${t.training_seed}` : `, seed ${t.training_seed}`}`).join('. ') + '. The final checkpoints are evaluated deterministically on reserved race seeds.';
   }
   function seeds() {
     const current = $('seed').value;
     $('seed').replaceChildren();
-    manifest.runs.filter(r => r.method === $('method').value && r.track === $('track').value).forEach(r => $('seed').append(option(r.seed, r.seed)));
+    manifest.runs.filter(r => r.method === $('method').value && r.track === $('track').value && matchesExecution(r)).forEach(r => $('seed').append(option(r.seed, r.seed)));
     if ([...$('seed').options].some(o => o.value === current)) $('seed').value = current;
     load();
   }
@@ -53,7 +73,7 @@
     updatePlay();
     $('load-status').hidden = false;
     $('load-status').textContent = 'Loading recorded race…';
-    const record = manifest.runs.find(r => r.track === $('track').value && r.method === $('method').value && String(r.seed) === $('seed').value);
+    const record = manifest.runs.find(r => r.track === $('track').value && r.method === $('method').value && String(r.seed) === $('seed').value && matchesExecution(r));
     try {
       const response = await fetch(`data/${record.file}`);
       if (!response.ok) throw new Error(`Replay unavailable (HTTP ${response.status})`);
@@ -74,7 +94,7 @@
       $('event').replaceChildren(option(0, 'Race start'));
       run.events.filter(event => event.kind === 'pass').forEach(event => $('event').append(option(Math.max(0, event.time - 3), `${event.time.toFixed(1)} s · car ${event.vehicle + 1} passes car ${event.opponent + 1}`)));
       $('focus').replaceChildren();
-      run.vehicles.forEach(v => $('focus').append(option(v.id, `${v.number} · ${v.name}`)));
+      run.vehicles.forEach(v => $('focus').append(option(v.id, `${v.number} · ${v.controller}`)));
       $('timeline').max = run.metrics.duration_s;
       $('timeline').value = 0;
       $('download').href = `data/${record.file}`;
@@ -321,7 +341,7 @@
       swatch.className = 'swatch';
       swatch.style.background = run.vehicles[id].color;
       const name = document.createElement('span');
-      name.textContent = `${run.vehicles[id].number} ${run.vehicles[id].name}`;
+      name.textContent = `${run.vehicles[id].number} · ${run.vehicles[id].controller}`;
       const gap = document.createElement('span');
       gap.className = 'gap';
       gap.textContent = rank ? `+${(ordered[0].state[0] - state[0]).toFixed(0)} m` : 'Leader';
@@ -337,7 +357,7 @@
     const entries = [['Measured speed', `${(states[selected][3] * 3.6).toFixed(1)} km/h`], ['Force', `${(frame.commands[selected][0] / 1000).toFixed(2)} kN`], ['Steering rate', `${frame.commands[selected][1].toFixed(3)} rad/s`]];
     if (plan) entries.push(['Target speed', `${(ref.speed * 3.6).toFixed(1)} km/h`], ['Lateral reference', `${ref.lateral.toFixed(2)} m`], ['Weights · speed / lateral', `${ref.speed_weight.toFixed(2)} / ${ref.lateral_weight.toFixed(2)}`]);
     $('controller-values').replaceChildren(valueGrid(entries));
-    $('horizon-note').textContent = plan ? `Current solve at t = ${frame.time.toFixed(1)} s · ${plan.solve_ms.toFixed(1)} ms · ${plan.success ? 'accepted' : 'failed'} · obstacle slack ${plan.obstacle_slack.toExponential(1)}. Only its first control input is applied.` : 'Direct SAC acts on force and steering rate. This car has no MPC horizon or obstacle-prediction module.';
+    $('horizon-note').textContent = plan ? `Current solve at t = ${frame.time.toFixed(1)} s · ${plan.solve_ms.toFixed(1)} ms · ${plan.success ? 'accepted' : 'failed'} · obstacle slack ${plan.obstacle_slack.toExponential(1)}. ${frame.applied ? 'Only its first control input is applied.' : 'This step was not applied: the race stopped.'}` : 'Direct SAC acts on force and steering rate. This car has no MPC horizon or obstacle-prediction module.';
     $('opponent-modes').replaceChildren();
     if (plan) plan.opponent_ids.forEach((id, j) => {
       const row = document.createElement('div');
@@ -345,7 +365,7 @@
       const name = document.createElement('span');
       name.textContent = `Car ${run.vehicles[id].number}`;
       const gap = document.createElement('span');
-      gap.textContent = `${(states[id][0] - states[selected][0]).toFixed(1)} m`;
+      gap.textContent = `${(plan.opponents[j][0][0] - run.states[Math.min(run.states.length - 1, Math.floor(time / run.dt))][selected][0]).toFixed(1)} m`;
       const mode = document.createElement('span'),
         braking = plan.modes[j] === 'follower_braking';
       mode.className = braking ? 'braking' : 'constant';
@@ -357,6 +377,10 @@
   $('event').onchange = () => {
     time = +$('event').value;
     draw();
+  };
+  if (manifest.kind === 'hilepp') $('execution').onchange = () => {
+    renderResults();
+    seeds();
   };
   $('method').onchange = seeds;
   $('track').onchange = seeds;
@@ -419,6 +443,7 @@
         time,
         playing,
         selected,
+        execution: actorExecution(),
         method: run?.method
       };
     }

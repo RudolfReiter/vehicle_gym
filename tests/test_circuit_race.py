@@ -62,6 +62,7 @@ def test_direct_sac_bypasses_only_ego_mpc():
     assert not world.planners[0].calls
     assert all(len(p.calls) == 1 for p in world.planners[1:])
     assert info["plans"][0] is None
+    assert info["references"][0] is None
     assert info["control_sources"] == ["SAC"] + ["MPC"] * 5
 
 

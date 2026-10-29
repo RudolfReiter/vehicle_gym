@@ -15,6 +15,9 @@ for entry, row in zip(manifest["runs"], manifest["evaluation"]):
     assert run["seed"] == entry["seed"] == row["seed"]
     assert run["track"]["name"] == entry["track"] == row["track"]
     assert run["metrics"] == entry["metrics"] == row["metrics"]
+    if entry.get("execution") and run["method"] != "MPC":
+        assert run["execution"]["mode"] == entry["execution"]
+    assert run["metrics"]["mpc_solves"] == (5 if run["method"] == "SAC" else 6) * len(run["frames"])
     states = np.asarray(run["states"])
     assert states.shape[1:] == (6, 5) and np.isfinite(states).all()
     assert np.isclose(run["metrics"]["duration_s"], (len(states) - 1) * run["dt"])
@@ -28,6 +31,8 @@ for entry, row in zip(manifest["runs"], manifest["evaluation"]):
         for vehicle, plan in enumerate(frame["plans"]):
             if vehicle == 0 and run["method"] == "SAC":
                 assert plan is None
+                assert frame["references"][0] is None
+                assert run["vehicles"][0]["reference"] is None
                 continue
             assert plan is not None
             assert plan["opponent_ids"] == [i for i in range(6) if i != vehicle]
