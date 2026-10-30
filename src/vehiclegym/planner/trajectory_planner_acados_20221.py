@@ -8,7 +8,7 @@ import numpy as np
 import scipy
 from typing import List
 from vehiclegym.planner.predictor import Predictor
-from acados_template import AcadosOcp, AcadosOcpSolver
+from acados_template import AcadosOcp, AcadosOcpSolver, ACADOS_INFTY
 
 from vehicle_models.model_kinematic import KinematicModelParameters
 from vehicle_models.model_kinematic_frenet import FrenetModelWithObstaclesEllipse
@@ -208,7 +208,7 @@ class VehiclePlannerAcados20221(Planner):
             [-self.model.params_.maximum_lateral_acc]
         )
 
-        ocp.constraints.uh = np.ones((self.n_con,)) * 1e6
+        ocp.constraints.uh = np.ones((self.n_con,)) * ACADOS_INFTY
         ocp.constraints.uh[0:self.n_con_acc] = np.array(
             [self.model.params_.maximum_lateral_acc]
         )
@@ -233,11 +233,12 @@ class VehiclePlannerAcados20221(Planner):
         ocp.solver_options.tol = (
             planner_options.qp_tolerance
         )  # 1e-2 is default, in RTI relevant for QP solution
-        ocp.solver_options.nlp_solver_type = "SQP_RTI"  # SQP_RTI
+        ocp.solver_options.nlp_solver_type = planner_options.nlp_solver  # SQP_RTI
+        ocp.solver_options.nlp_solver_max_iter = planner_options.nlp_solver_max_iter
         ocp.solver_options.hessian_approx = "GAUSS_NEWTON"  # "GAUSS_NEWTON"  # "EXACT"
         ocp.solver_options.integrator_type = "IRK"
+        ocp.solver_options.globalization = planner_options.globalization#"FUNNEL_L1PEN_LINESEARCH"
         # ocp.solver_options.exact_hess_constr = 0
-        ocp.solver_options.nlp_solver_max_iter = 1
         ocp.solver_options.sim_method_num_stages = 1
         ocp.solver_options.sim_method_num_steps = 2
         ocp.solver_options.time_steps = get_time_steps(
