@@ -22,7 +22,7 @@ plt.rcParams.update(
         "xtick.color": "#53636e",
         "ytick.color": "#53636e",
         "svg.fonttype": "none",
-        "svg.hashsalt": "six-car-circuit-v1",
+        "svg.hashsalt": "six-car-circuit-v2",
     }
 )
 modes = list(dict.fromkeys(row.get("execution") for row in manifest["evaluation"]))
@@ -65,7 +65,7 @@ for mode in modes:
             maximum = max(row["metrics"][metric] for row in records)
             ax.set_xlim(0, max(1, maximum * 1.07))
     legend = [
-        Line2D([0], [0], marker="o", color="#516472", linestyle="", label="Completed 180 s"),
+        Line2D([0], [0], marker="o", color="#516472", linestyle="", label="Completed time limit"),
         Line2D([0], [0], marker="x", color="#516472", linestyle="", label="Early termination"),
     ]
     fig.legend(handles=legend, loc="outside lower center", ncol=2, frameon=False)

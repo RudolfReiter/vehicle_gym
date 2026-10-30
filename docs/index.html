@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Multi-agent model predictive racing</title>
 <meta name="description" content="Recorded six-car MPC races on real circuits, with current planning horizons and reproducible evaluation.">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=2">
 </head>
 <body>
 <main>
@@ -13,7 +13,7 @@
 <div class="publication">vehicle_gym · Six independent MPC racing policies</div>
 <h1>Multi-agent model predictive racing</h1>
 <p class="authors">Rudolf Reiter · Jasper Hoffmann · Joschka Boedecker · Moritz Diehl</p>
-<p class="abstract">Six nonlinear MPC controllers race on IMS and Sepang. Each controller solves from the same measured state, applies its first control input, and replans after 0.2 s.</p>
+<p class="abstract">Six nonlinear MPC controllers with different vehicle limits race on an oval, IMS and Sepang. Each controller solves from the same measured state, applies its first control input, and replans after 0.2 s.</p>
 <nav>
 <a href="https://publications.syscop.de/Reiter2023.pdf">Paper · ECC 2023 ↗</a>
 <a href="https://github.com/RudolfReiter/vehicle_gym">Repository ↗</a>
@@ -55,7 +55,7 @@
 <canvas id="scene" aria-label="Six-car race on the selected circuit. Use the adjacent timing table and timeline for the recorded state.">
 </canvas>
 <div class="stage-label">
-<span id="circuit-name">IMS</span>
+<span id="circuit-name">Oval</span>
 <span id="race-clock">0:00.0</span>
 <span id="race-state">Loading recorded race…</span>
 </div>
@@ -92,6 +92,8 @@
 </select>
 </label>
 </div>
+<p class="note race-summary" id="race-summary">
+</p>
 <div class="event-nav">
 <label>Jump to a recorded pass <select id="event">
 <option value="0">Race start</option>
@@ -131,7 +133,7 @@
 </section>
 <section id="experiment">
 <h2>Experimental protocol</h2>
-<p>Six vehicles share one periodic, curvilinear track model and identical vehicle dynamics. Each MPC receives all five measured opponent states, solves its own finite-horizon problem, then applies only the first force and steering-rate input. All six vehicles advance simultaneously. Opponent predictions are assumptions inside each optimization, not their actual future controls.</p>
+<p>Six vehicles share a periodic, curvilinear track model and vehicle equations, with different speed, longitudinal acceleration and cornering limits. Each MPC receives all five measured opponent states, solves its own finite-horizon problem, then applies only the first force and steering-rate input. All six vehicles advance simultaneously. Opponent predictions are assumptions inside each optimization, not their actual future controls.</p>
 <table>
 <thead>
 <tr>
@@ -147,6 +149,23 @@
 </tbody>
 </table>
 <p>All six racing policies use fixed references and weights, with different target speeds and lateral offsets. There is no reinforcement learning in this experiment. Each current MPC plan responds to traffic and circuit curvature. Obstacle trajectories update at every control step; after a pass, the follower is assumed able to brake. This feasibility assumption does not assert that the follower intends to brake.</p>
+<h3>Vehicle envelopes</h3>
+<p>Limits belong to the selected recording. Longitudinal acceleration is constrained directly, including drag. Speed and lateral acceleration use the MPC’s soft constraints; a positive minimum speed is therefore relaxable when yielding.</p>
+<div class="table-scroll">
+<table>
+<thead>
+<tr>
+<th>Car</th>
+<th>Speed min … max · m/s</th>
+<th>Longitudinal min … max · m/s²</th>
+<th>Lateral min … max · m/s²</th>
+</tr>
+</thead>
+<tbody id="vehicle-limits">
+</tbody>
+</table>
+</div>
+<p>The synthetic oval is a 125 m × 80 m semi-axis ellipse, approximately 650 m per lap. Its 240-second races include repeated encounters and lap traffic. IMS and Sepang use the same circuit datasets as vehicle_gym.</p>
 <div class="protocol" id="protocol">
 </div>
 <details>
@@ -187,11 +206,11 @@
 </p>
 </footer>
 </main>
-<script src="data/manifest.js">
+<script src="data/manifest.js?v=2">
 </script>
-<script src="scene.js">
+<script src="scene.js?v=2">
 </script>
-<script src="app.js">
+<script src="app.js?v=2">
 </script>
 </body>
 </html>

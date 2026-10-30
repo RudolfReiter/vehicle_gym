@@ -8,15 +8,18 @@ from .race_replay import record_race, write_replay, write_manifest
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--tracks", nargs="+", default=["IMS", "Sepang"])
+    parser.add_argument("--tracks", nargs="+", default=["Oval", "IMS", "Sepang"])
     parser.add_argument("--duration", type=float, default=180)
-    parser.add_argument("--seeds", type=int, nargs="+", default=[20000, 20001, 20002])
+    parser.add_argument(
+        "--oval-duration", type=float, default=240, help="Longer repeated-lap oval race"
+    )
+    parser.add_argument("--seeds", type=int, nargs="+", default=[30000, 30001, 30002])
     parser.add_argument("--output", type=Path, default=Path("docs/data"))
     args = parser.parse_args()
     entries = []
     records = []
     for track in args.tracks:
-        world = CircuitRace(track, args.duration)
+        world = CircuitRace(track, args.oval_duration if track == "Oval" else args.duration)
         for seed in args.seeds:
             run = record_race(world, seed, progress=True)
             filename = f"{track.lower()}-mpc-{seed}.json.gz"

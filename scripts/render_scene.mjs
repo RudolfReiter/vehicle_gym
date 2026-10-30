@@ -152,6 +152,7 @@ const canvas = {
 };
 const scene = new sandbox.window.RaceScene(canvas);
 scene.setRun(run);
+scene.mode = process.argv[4] || 'broadcast';
 const time = Math.min(Number(process.argv[3] || 26), run.metrics.duration_s);
 scene.render(time);
 context.font = '16px sans-serif';

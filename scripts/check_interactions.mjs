@@ -100,6 +100,8 @@ async function ready() {
 await ready();
 assert.equal(window.RaceViewer.getState().playing, false);
 assert.equal(window.RaceViewer.getState().time, 0);
+assert.equal(get('vehicle-limits').children.length, 6);
+assert.ok(get('race-summary').textContent.includes('lap traffic'));
 let stamp = 0;
 const tick = () => frame(stamp += 16.667);
 for (const method of [...new Set(manifest.runs.map(r => r.method))]) {
@@ -140,10 +142,25 @@ if (manifest.kind === 'hilepp') {
   await ready();
   assert.equal(window.RaceViewer.getState().execution, 'sampled');
 }
-get('track').value = 'Sepang';
+for (const track of [...new Set(manifest.runs.map(r => r.track))]) {
+  get('track').value = track;
+  get('track').onchange();
+  await ready();
+  assert.equal(window.RaceViewer.getState().time, 0);
+  assert.equal(get('vehicle-limits').children.length, 6);
+}
+get('track').value = 'Oval';
 get('track').onchange();
 await ready();
-assert.equal(window.RaceViewer.getState().time, 0);
+get('method').value = 'MPC';
+get('method').onchange();
+await ready();
+window.RaceViewer.setTime(Math.min(200, Number(get('timeline').max)));
+assert.ok(get('race-state').textContent.includes('Lap'));
+get('camera').value = 'circuit';
+get('camera').onchange();
+get('camera').value = 'broadcast';
+get('camera').onchange();
 assert.ok(!html.includes('ghost'));
 assert.ok(!ids.has('scenario'));
 assert.ok(!ids.has('probe'));
@@ -159,6 +176,19 @@ for (const track of [...new Set(manifest.runs.map(entry => entry.track))]) {
   }
   const scene = new window.RaceScene(get('scene'));
   scene.setRun(run);
+  const crossings = run.states.flatMap((states, k) => k > 0 && Math.floor(states[0][0] / run.track.length) > Math.floor(run.states[k - 1][0][0] / run.track.length) ? [k] : []);
+  for (const k of crossings) {
+    const before = run.states[k - 1][0][0],
+      after = run.states[k][0][0];
+    const boundary = Math.floor(after / run.track.length) * run.track.length;
+    const crossingTime = (k - 1 + (boundary - before) / (after - before)) * run.dt;
+    const point = geometry.point(boundary);
+    scene.render(crossingTime - .0001);
+    const a = scene.project(point);
+    scene.render(crossingTime + .0001);
+    const b = scene.project(point);
+    assert.ok(Math.hypot(a[0] - b[0], a[1] - b[1]) < .1, 'Camera continuity at the start/finish seam');
+  }
   const t = Math.min(10, run.metrics.duration_s / 2);
   scene.render(t);
   const point = geometry.point(run.states[Math.floor(t / run.dt)][0][0]),

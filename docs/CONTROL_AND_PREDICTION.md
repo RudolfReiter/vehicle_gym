@@ -16,7 +16,7 @@ Only MPC is part of the vehicle_gym competition. The learned comparisons live in
 
 ## Other-car assumptions
 
-For each observer, a car ahead or alongside keeps its measured speed and heading error in the curvilinear frame. Once it is more than one vehicle length (4.6 m) behind, its assumed acceleration switches to −10 m/s² until standstill. Lateral predictions are clipped to the drivable corridor. RK4 integration splits exactly at standstill and prevents reverse motion.
+For each observer, a car ahead or alongside keeps its measured speed and heading error in the curvilinear frame. Once it is more than one vehicle length (4.6 m) behind, its assumed acceleration switches to that follower’s own minimum longitudinal acceleration until standstill. Lateral predictions are clipped to the drivable corridor. RK4 integration splits exactly at standstill and prevents reverse motion.
 
 This full-braking trajectory represents the assumed ability of a follower to yield. It is not a prediction of the other MPC's intended braking command. Different observers can assign different modes to the same physical car. None of them has access to another controller's planned controls or future simulation states.
 
@@ -29,3 +29,11 @@ SQP iterates are accepted at status 0 or iteration-limit status 2 if state traje
 State and obstacle constraints are soft. Their slack can be positive even when the numerical problem is solved. Elliptical obstacle margins are 9 m longitudinally and 3.8 m laterally. Physical collisions use oriented 4.6 × 1.9 m rectangles and are checked at four integration substeps. Track exits also account for the body footprint. The rendered track edge follows the same conservative usable width as these checks, rather than displaying a wider corridor than the simulation permits.
 
 All race termination reasons and involved vehicle IDs are retained. The horizon shown at a failed terminal solve is not applied. A completed simulation is evidence about that rollout only, not a general safety guarantee.
+
+## Periodic races and vehicle limits
+
+Cars retain unwrapped progress for ranking, while track geometry is evaluated modulo circuit length at every integration stage. Obstacle positions use the nearest lap relative to the observing car. A pass over a lap boundary is recorded as lap traffic after 4.6 m clearance; crossing the far side of the circuit does not create a pass.
+
+Each recording includes per-car minimum/maximum speed and signed longitudinal/lateral acceleration bounds. Longitudinal acceleration includes drag and is a hard MPC path constraint, including the first control interval. Speed and lateral acceleration are soft. Minimum speed can relax while yielding; full braking to standstill therefore remains possible. Each observer uses the particular follower’s maximum deceleration in its assumption. The same limits are retained in all HILEPP/SAC/MPC comparisons.
+
+The replay’s `planner` block contains shared solver settings and compatibility defaults. Each `vehicles[i].limits` block is authoritative for that car’s applied envelope.

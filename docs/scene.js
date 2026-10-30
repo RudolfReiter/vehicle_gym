@@ -109,7 +109,8 @@
         const b = g.bounds;
         center = [(b[0] + b[1]) / 2, (b[2] + b[3]) / 2];
         angle = 0;
-        scale = Math.min((w - 360) / (b[1] - b[0]), (h - 90) / (b[3] - b[2]));
+        const margin = run.track.half_width + 8;
+        scale = Math.min((w - 320) / (b[1] - b[0] + 2 * margin), (h - 90) / (b[3] - b[2] + 2 * margin));
         scale = Math.max(.04, scale);
         pitch = 1;
       } else {
@@ -136,7 +137,7 @@
       c.fillStyle = '#a9b49c';
       c.fillRect(0, 0, w, h);
       // Stable world-space mowing bands and subtle ground grain.
-      if (this.mode !== 'circuit') {
+      if (this.mode !== 'circuit' || scale >= 1.5) {
         for (let x = Math.floor((center[0] - 250) / 16) * 16; x < center[0] + 250; x += 16) this.polygon([[x, center[1] - 300], [x + 8, center[1] - 300], [x + 8, center[1] + 300], [x, center[1] + 300]].map(p => this.project(p)), '#a4b096');
         for (let i = 0; i < 900; i++) {
           const x = Math.floor(center[0] / 300) * 300 - 300 + i * 71.37 % 900,
@@ -172,7 +173,7 @@
         strip(1, -1, 3.2, '#919891');
         strip(1, -1, .7, '#454b4e');
         strip(1, -1, 0, '#53595b');
-        if (this.mode !== 'circuit') {
+        if (this.mode !== 'circuit' || scale >= 1.5) {
           for (const side of [-1, 1]) {
             this.line(indices.map(i => this.project(edge(i, side, .45))), '#ecebe4', Math.max(1, scale * .17));
             this.line(indices.map(i => this.project(edge(i, side, 7.5))), '#8a9290', scale * .35);
@@ -201,7 +202,18 @@
           }
         }
       }
-      if (this.predictions && this.mode !== 'circuit') {
+      // A fixed start/finish stripe makes completed circuits visually explicit.
+      const finish = g.point(0);
+      if (this.mode === 'circuit' || Math.hypot(finish[0] - center[0], finish[1] - center[1]) < 220) {
+        const cells = 12,
+          cellWidth = 2 * run.track.half_width / cells;
+        for (let row = 0; row < 2; row++) for (let column = 0; column < cells; column++) {
+          const a = -run.track.half_width + column * cellWidth,
+            b = a + cellWidth;
+          this.polygon([[row, a], [row + 1, a], [row + 1, b], [row, b]].map(([s, n]) => this.project(g.point(s, n))), (row + column) % 2 ? '#f2efe6' : '#343b40');
+        }
+      }
+      if (this.predictions && (this.mode !== 'circuit' || scale >= 1.5)) {
         const frame = run.frames[Math.min(run.frames.length - 1, Math.floor(time / run.dt))],
           plan = frame?.plans[this.focus];
         if (plan) {
@@ -233,7 +245,7 @@
         id,
         p
       } of ordered) {
-        if (this.mode === 'circuit') {
+        if (this.mode === 'circuit' && scale < 1.5) {
           const q = this.project(p);
           c.beginPath();
           c.arc(...q, id === this.focus ? 5 : 4, 0, Math.PI * 2);

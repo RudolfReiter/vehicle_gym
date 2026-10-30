@@ -649,3 +649,21 @@ footer p {
 .event-nav span {
   color: #71808a;
 }
+
+h3 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 24px 0 8px;
+}
+
+.race-summary {
+  margin: 12px 18px 0;
+}
+
+.equation {
+  font-family: ui-monospace, monospace;
+  font-size: 16px;
+  padding: 16px 20px;
+  background: #f4f7f9;
+  border-left: 3px solid #176da5;
+}

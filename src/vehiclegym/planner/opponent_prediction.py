@@ -27,6 +27,9 @@ def normalize_opponents(opponents):
 def predict_opponents(ego, opponents, time_grid, track, braking=8.0):
     """Return (opponent, horizon node, state) trajectories and assumption labels."""
     opponents = normalize_opponents(opponents)
+    braking = np.broadcast_to(np.asarray(braking, dtype=float), (len(opponents),))
+    if not np.isfinite(braking).all() or np.any(braking <= 0):
+        raise ValueError("Each opponent needs a positive braking magnitude")
     trajectories = np.repeat(opponents[:, None, :], len(time_grid), axis=1)
     behind = opponents[:, 0] < ego[0] - 4.6
     modes = tuple("follower_braking" if value else "constant_velocity_heading" for value in behind)
@@ -34,7 +37,11 @@ def predict_opponents(ego, opponents, time_grid, track, braking=8.0):
     state = opponents.copy()
 
     def derivative(value):
-        curvature = np.interp(value[:, 0], track.s, track.curvature)
+        curvature = (
+            track.curvature_at(value[:, 0])
+            if hasattr(track, "curvature_at")
+            else np.interp(value[:, 0], track.s, track.curvature)
+        )
         return np.column_stack(
             (
                 value[:, 3] * np.cos(value[:, 2]) / (1 - value[:, 1] * curvature),

@@ -2,12 +2,13 @@
 
 from importlib import import_module
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 _EXPORTS = {
     "Circuit": "vehiclegym.road.circuit",
     "CircuitRace": "vehiclegym.simulator.circuit_race",
     "RaceMPC": "vehiclegym.planner.race_mpc",
     "RaceConfig": "vehiclegym.planner.race_mpc",
+    "VehicleLimits": "vehiclegym.planner.vehicle_limits",
     "FrenetReference": "vehiclegym.planner.references",
     "PlannerOptions": "vehiclegym.planner.trajectory_planner_base",
     "PlanningDataContainer": "vehiclegym.planner.trajectory_planner_base",

@@ -6,10 +6,12 @@ from vehiclegym.road.circuit import Circuit
 from vehiclegym.simulator.circuit_race import CircuitRace
 from vehiclegym.planner.references import FrenetReference
 from vehiclegym.planner.opponent_prediction import predict_opponents
+from vehiclegym.planner.vehicle_limits import VehicleLimits, racing_limits
+import pytest
 
 
 class RecordingPlanner:
-    def __init__(self, track, config):
+    def __init__(self, track, config, limits=None, opponent_limits=None):
         self.config = config
         self.calls = []
 
@@ -99,3 +101,54 @@ def test_periodic_opponent_positions_use_nearest_lap():
     other = np.array([[track.length - 8, 0, 0, 20, 0.0]])
     np.testing.assert_allclose(track.nearby(np.array([2, 0, 0, 20, 0.0]), other)[0, 0], -8)
     assert other[0, 0] > 0
+
+
+def test_oval_geometry_and_observations_remain_periodic_after_many_laps():
+    world = CircuitRace("Oval", planner_factory=RecordingPlanner)
+    obs = world.reset(33)
+    assert 640 < world.track.length < 670
+    np.testing.assert_allclose(world.track.base_xy[0], world.track.base_xy[-1], atol=1e-9)
+    world.states[:, 0] += 12 * world.track.length
+    np.testing.assert_allclose(world.observation(), obs, atol=1e-6)
+    np.testing.assert_allclose(
+        world.track.curvature_at([-10, 0, 100]),
+        world.track.curvature_at(np.array([-10, 0, 100]) + 20 * world.track.length),
+    )
+
+
+def test_each_follower_prediction_uses_its_own_braking_capability():
+    track = Circuit.load("Oval")
+    cars = np.array([[-10, 0, 0, 20, 0], [-10, 0, 0, 20, 0]], float)
+    predicted, modes = predict_opponents(
+        np.zeros(5), cars, np.arange(31) * 0.2, track, braking=[4, 10]
+    )
+    assert modes == ("follower_braking",) * 2
+    np.testing.assert_allclose(predicted[:, -1, 0], [40, 10], atol=1e-6)
+
+
+def test_diverse_limits_and_invalid_envelopes():
+    limits = racing_limits()
+    assert len({v.speed_max for v in limits}) == 6
+    assert len({v.longitudinal_max for v in limits}) == 6
+    with pytest.raises(ValueError):
+        VehicleLimits(speed_min=35, speed_max=30)
+    with pytest.raises(ValueError):
+        VehicleLimits(longitudinal_min=2)
+
+
+def test_lap_pass_is_recorded_once_without_a_false_antipodal_pass():
+    world = CircuitRace("Oval", planner_factory=RecordingPlanner)
+    world.reset(1)
+    world.states[:, 1] = [-4, -2, 0, 2, 4, 0]
+    world.states[:, 2] = 0
+    world.states[:, 0] = [world.track.length - 1, 0, 150, 220, 290, 360]
+    world.states[:, 3] = [30, 0, 0, 0, 0, 0]
+    world.pass_buckets = np.floor(
+        (world.states[:, 0, None] - world.states[None, :, 0]) / world.track.length
+    ).astype(int)
+    world.step()
+    passes = [e for e in world.events if e["kind"] == "pass"]
+    assert len(passes) == 1 and passes[0]["lap_traffic"]
+    assert (passes[0]["vehicle"], passes[0]["opponent"]) == (0, 1)
+    world.step()
+    assert sum(e["kind"] == "pass" for e in world.events) == 1

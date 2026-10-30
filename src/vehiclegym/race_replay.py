@@ -79,6 +79,7 @@ def record_race(world, seed=20000, method="MPC", controller=None, start=0.0, pro
             name=method if i == 0 else f"MPC {i + 1:02}",
             controller=method if i == 0 else "MPC",
             color=VEHICLE_COLORS[i],
+            limits=asdict(world.limits[i]),
             reference=None if i == 0 and method == "SAC" else asdict(world.profiles[i]),
         )
         for i in range(world.count)
@@ -93,6 +94,11 @@ def record_race(world, seed=20000, method="MPC", controller=None, start=0.0, pro
         mean_solve_ms=float(np.mean(solves)),
         max_obstacle_slack=max_slack,
         passes=sum(e["kind"] == "pass" and e["vehicle"] == 0 for e in world.events),
+        laps=float((world.states[0, 0] - initial[0, 0]) / world.track.length),
+        total_passes=sum(e["kind"] == "pass" for e in world.events),
+        lap_traffic_passes=sum(
+            e["kind"] == "pass" and e.get("lap_traffic", False) for e in world.events
+        ),
         passed_by=sum(e["kind"] == "pass" and e["opponent"] == 0 for e in world.events),
         mpc_solves=len(solves),
     )

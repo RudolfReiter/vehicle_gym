@@ -15,6 +15,7 @@ from vehicle_models.model_kinematic import KinematicModelParameters
 from vehicle_models.model_kinematic_frenet import FrenetModel
 from .opponent_prediction import predict_opponents
 from .portable import Plan
+from .vehicle_limits import VehicleLimits
 
 
 @dataclass(frozen=True)
@@ -31,20 +32,39 @@ class RaceConfig:
 
 
 class RaceMPC:
-    def __init__(self, track, config=None, cache="artifacts/acados"):
+    def __init__(
+        self, track, config=None, cache="artifacts/acados", limits=None, opponent_limits=None
+    ):
         from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 
         self.track, self.config = track, config or RaceConfig()
         c = self.config
+        self.limits = limits or VehicleLimits(
+            speed_max=c.speed_limit,
+            lateral_min=-c.lateral_acceleration,
+            lateral_max=c.lateral_acceleration,
+        )
+        self.opponent_braking = (
+            np.array([-limit.longitudinal_min for limit in opponent_limits])
+            if opponent_limits is not None
+            else c.braking
+        )
         self.model = FrenetModel(
             track.s, None, KinematicModelParameters(), p_kappa_np=track.curvature
         )
         x, u = ca.MX.sym("x", 5), ca.MX.sym("u", 2)
         p = ca.MX.sym("p", 6 + 2 * c.opponents)
         # [s_ref,n_ref,v_ref,w_n,w_v,terminal_speed,opponent positions...]
-        f = self.model.f_ode(x, ca.vertcat(u[0] * 1000, u[1]))
+        # Keep race progress unwrapped while evaluating geometry periodically.
+        # This applies at every RK stage, including when a horizon crosses the seam.
+        wrapped = ca.vertcat(
+            ca.fmod(ca.fmod(x[0], track.length) + track.length, track.length), x[1:]
+        )
+        f = self.model.f_ode(wrapped, ca.vertcat(u[0] * 1000, u[1]))
+        dynamics = ca.Function("periodic_racing_dynamics", [x, u], [f])
         key = hashlib.sha256(
-            (track.name + repr(c) + "race-v5").encode() + track.curvature.tobytes()
+            (track.name + repr(c) + "race-v7-periodic-envelopes").encode()
+            + track.curvature.tobytes()
         ).hexdigest()[:12]
         directory = Path(cache).resolve() / key
         directory.mkdir(parents=True, exist_ok=True)
@@ -76,7 +96,8 @@ class RaceMPC:
                 for j in range(c.opponents)
             ],
         )
-        model.con_h_expr = h
+        model.con_h_expr = ca.vertcat(h, f[3])
+        model.con_h_expr_0 = f[3]
         model.con_h_expr_e = ca.vertcat(h, x[2], x[3])
         ocp.model = model
         ocp.solver_options.N_horizon = c.intervals
@@ -96,8 +117,12 @@ class RaceMPC:
             c.lateral_acceleration,
             np.full(c.opponents, 1e8),
         ]
-        ocp.constraints.lh = low
-        ocp.constraints.uh = high
+        low[2], high[2] = self.limits.speed_min, self.limits.speed_max
+        low[4], high[4] = self.limits.lateral_min, self.limits.lateral_max
+        ocp.constraints.lh = np.r_[low, self.limits.longitudinal_min]
+        ocp.constraints.uh = np.r_[high, self.limits.longitudinal_max]
+        ocp.constraints.lh_0 = np.array([self.limits.longitudinal_min])
+        ocp.constraints.uh_0 = np.array([self.limits.longitudinal_max])
         ocp.constraints.lh_e = np.r_[low, -0.02, 0]
         ocp.constraints.uh_e = np.r_[high, 0.02, c.terminal_speed]
         ocp.constraints.idxsh = np.arange(len(low))
@@ -137,13 +162,21 @@ class RaceMPC:
             self.solver = AcadosOcpSolver(
                 ocp, json_file=json_file, generate=not built, build=not built
             )
+        # Generated code is shared across cars; explicitly set each instance's bounds.
+        self.solver.constraints_set(0, "lh", ocp.constraints.lh_0)
+        self.solver.constraints_set(0, "uh", ocp.constraints.uh_0)
+        for k in range(1, c.intervals):
+            self.solver.constraints_set(k, "lh", ocp.constraints.lh)
+            self.solver.constraints_set(k, "uh", ocp.constraints.uh)
+        self.solver.constraints_set(c.intervals, "lh", ocp.constraints.lh_e)
+        self.solver.constraints_set(c.intervals, "uh", ocp.constraints.uh_e)
         self.previous = None
         self.previous_controls = None
         dt = ca.MX.sym("dt")
         k1 = f
-        k2 = self.model.f_ode(x + dt * k1 / 2, ca.vertcat(u[0] * 1000, u[1]))
-        k3 = self.model.f_ode(x + dt * k2 / 2, ca.vertcat(u[0] * 1000, u[1]))
-        k4 = self.model.f_ode(x + dt * k3, ca.vertcat(u[0] * 1000, u[1]))
+        k2 = dynamics(x + dt * k1 / 2, u)
+        k3 = dynamics(x + dt * k2 / 2, u)
+        k4 = dynamics(x + dt * k3, u)
         self.integrate = ca.Function(
             "integrate_race", [x, u, dt], [x + dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6]
         )
@@ -158,7 +191,11 @@ class RaceMPC:
         state = np.asarray(state)
         opponents = self.track.nearby(state, opponents)
         predictions, modes = predict_opponents(
-            state, opponents, np.arange(c.intervals + 1) * c.dt, self.track, braking=c.braking
+            state,
+            opponents,
+            np.arange(c.intervals + 1) * c.dt,
+            self.track,
+            braking=self.opponent_braking,
         )
         obstacles = np.tile([state[0] + 10000, 0], (c.opponents, c.intervals + 1, 1))
         obstacles[: len(opponents)] = predictions[:, :, :2]
@@ -182,7 +219,7 @@ class RaceMPC:
                 guess = state.copy()
                 guess[0] += k * c.dt * state[3]
                 guess[2] = 0
-                guess[4] = np.arctan(3 * np.interp(guess[0], self.track.s, self.track.curvature))
+                guess[4] = np.arctan(3 * self.track.curvature_at(guess[0]))
             else:
                 guess = self.previous[min(k + 1, c.intervals)]
             solver.set(k, "x", guess)
@@ -214,9 +251,7 @@ class RaceMPC:
                         (lateral - state[1]) * t * np.exp(-t * t / 2), max(5, state[3] - 3 * t)
                     )
                     guess[3] = max(5, state[3] - 3 * t)
-                    guess[4] = np.arctan(
-                        3 * np.interp(guess[0], self.track.s, self.track.curvature)
-                    )
+                    guess[4] = np.arctan(3 * self.track.curvature_at(guess[0]))
                     solver.set(k, "x", guess)
                     if k < c.intervals:
                         solver.set(k, "u", np.array([-3.5, 0.0]))

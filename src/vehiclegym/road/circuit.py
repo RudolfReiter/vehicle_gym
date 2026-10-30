@@ -8,12 +8,23 @@ from .track import Track
 
 
 class Circuit(Track):
+    @staticmethod
+    def available_tracks():
+        return ["Oval", *Track.available_tracks()]
+
     @classmethod
     def load(cls, name="IMS", spacing=2.0, smoothing_m=6.0):
-        if name not in Track.available_tracks():
+        if name == "Oval":
+            # Analytic ellipse, explicitly synthetic: about 650 m per lap.
+            theta = np.linspace(-np.pi / 2, 3 * np.pi / 2, 720, endpoint=False)
+            raw = np.column_stack(
+                (125 * np.cos(theta), 80 * np.sin(theta), np.full(720, 7.5), np.full(720, 7.5))
+            )
+        elif name not in Track.available_tracks():
             raise ValueError(f"Unknown packaged circuit: {name}")
-        with files("data").joinpath("racetracks", name + ".csv").open() as stream:
-            raw = np.loadtxt(stream, delimiter=",")
+        else:
+            with files("data").joinpath("racetracks", name + ".csv").open() as stream:
+                raw = np.loadtxt(stream, delimiter=",")
         keep = np.r_[True, np.linalg.norm(np.diff(raw[:, :2], axis=0), axis=1) > 1e-4]
         raw = raw[keep]
         xy = np.vstack((raw[:, :2], raw[0, :2]))
@@ -63,6 +74,12 @@ class Circuit(Track):
         values[:, 0] += np.round((state[0] - values[:, 0]) / self.length) * self.length
         return values
 
+    def curvature_at(self, s):
+        return np.interp(np.asarray(s) % self.length, self.base_s, self.base_curvature)
+
+    def heading_at(self, s):
+        return np.interp(np.asarray(s) % self.length, self.base_s, self.base_heading)
+
     def export_circuit(self):
         s = self.base_s
         return dict(
@@ -75,4 +92,7 @@ class Circuit(Track):
             curvature=self.base_curvature.tolist(),
             half_width=self.half_width,
             smoothing_m=self.smoothing_m,
+            source="Analytic ellipse: semi-axes 125 m and 80 m"
+            if self.name == "Oval"
+            else "Packaged vehicle_gym racetrack survey",
         )

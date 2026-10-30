@@ -24,14 +24,24 @@ for entry in manifest["runs"]:
             track.s, None, KinematicModelParameters(), p_kappa_np=track.curvature
         )
     model = models[entry["track"]]
+    track = Circuit.load(entry["track"])
+
+    def derivative(state, command):
+        wrapped = state.copy()
+        wrapped[0] %= track.length
+        return np.asarray(model.f_ode(wrapped, command)).ravel()
+
     run = json.loads(gzip.decompress((root / "docs/data" / entry["file"]).read_bytes()))
     states = np.asarray(run["states"])
+    if len(states) < 2:
+        print(f"No applied controls to audit: {entry['id']}")
+        continue
     indices = np.unique(np.linspace(0, len(states) - 2, 10).astype(int))
     for k in indices:
         for car in range(6):
             command = np.asarray(run["frames"][k]["commands"][car])
             result = solve_ivp(
-                lambda t, x: np.asarray(model.f_ode(x, command)).ravel(),
+                lambda t, x: derivative(x, command),
                 [0, run["dt"]],
                 states[k, car],
                 rtol=1e-9,

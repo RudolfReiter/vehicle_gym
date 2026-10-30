@@ -27,7 +27,7 @@
     modes.forEach(mode => $('execution').append(option(mode, mode === 'sampled' ? 'Sampled policy' : 'Mean action')));
     $('execution').disabled = modes.length < 2;
   }
-  [...new Set(manifest.runs.map(r => r.track))].forEach(t => $('track').append(option(t, t === 'Sepang' ? 'Sepang · stress test' : t)));
+  [...new Set(manifest.runs.map(r => r.track))].forEach(t => $('track').append(option(t, t === 'Oval' ? 'Oval · repeated laps' : t === 'Sepang' ? 'Sepang · stress test' : t)));
   const outcome = m => m.completed ? 'Completed' : ({
     collision: 'Collision',
     track_exit: 'Track exit',
@@ -44,7 +44,7 @@
     for (const record of manifest.evaluation.filter(row => manifest.kind !== "hilepp" || row.execution === actorExecution())) {
       const row = document.createElement('tr'),
         m = record.metrics;
-      for (const value of [record.track, record.method, record.seed, `${m.duration_s.toFixed(1)} s`, `${m.progress_m.toFixed(0)} m`, `${m.rank} / 6`, m.passes, outcome(m)]) {
+      for (const value of [record.track, record.method, record.seed, `${m.duration_s.toFixed(1)} s`, `${m.progress_m.toFixed(0)} m · ${m.laps.toFixed(1)} laps`, `${m.rank} / 6`, m.passes, outcome(m)]) {
         const cell = document.createElement('td');
         cell.textContent = value;
         row.append(cell);
@@ -58,7 +58,7 @@
   }
   renderResults();
   if (manifest.training) {
-    $('training-note').textContent = Object.entries(manifest.training).map(([method, t]) => `${method}: ${t.steps.toLocaleString()} training interactions, ${t.gradient_updates.toLocaleString()} SAC updates${t.pretraining ? `, stage seeds ${t.pretraining.training_seed} and ${t.training_seed}` : `, seed ${t.training_seed}`}`).join('. ') + '. The final checkpoints are evaluated deterministically on reserved race seeds.';
+    $('training-note').textContent = Object.entries(manifest.training).map(([method, t]) => `${method}: ${t.steps.toLocaleString()} training interactions, ${t.gradient_updates.toLocaleString()} SAC updates${t.pretraining ? `, stage seeds ${t.pretraining.training_seed} and ${t.training_seed}` : `, seed ${t.training_seed}`}`).join('. ') + '. Both actors and twin critics use Deep Sets. The selector exposes sampled and mean-action execution from the same checkpoint.';
   }
   function seeds() {
     const current = $('seed').value;
@@ -92,13 +92,26 @@
       plotCache = null;
       uiKey = '';
       $('event').replaceChildren(option(0, 'Race start'));
-      run.events.filter(event => event.kind === 'pass').forEach(event => $('event').append(option(Math.max(0, event.time - 3), `${event.time.toFixed(1)} s · car ${event.vehicle + 1} passes car ${event.opponent + 1}`)));
+      run.events.filter(event => event.kind === 'pass').forEach(event => $('event').append(option(Math.max(0, event.time - 3), `${event.time.toFixed(1)} s · car ${event.vehicle + 1} passes car ${event.opponent + 1}${event.lap_traffic ? ' · lap traffic' : ''}`)));
       $('focus').replaceChildren();
       run.vehicles.forEach(v => $('focus').append(option(v.id, `${v.number} · ${v.controller}`)));
       $('timeline').max = run.metrics.duration_s;
       $('timeline').value = 0;
       $('download').href = `data/${record.file}`;
       $('circuit-name').textContent = `${run.track.name} · ${(run.track.length / 1000).toFixed(2)} km`;
+      $('vehicle-limits').replaceChildren();
+      for (const vehicle of run.vehicles) {
+        const row = document.createElement('tr'),
+          limits = vehicle.limits;
+        const range = (a, b) => `${a.toFixed(1)} … ${b.toFixed(1)}`;
+        for (const value of [vehicle.number, range(limits.speed_min, limits.speed_max), range(limits.longitudinal_min, limits.longitudinal_max), range(limits.lateral_min, limits.lateral_max)]) {
+          const cell = document.createElement('td');
+          cell.textContent = value;
+          row.append(cell);
+        }
+        $('vehicle-limits').append(row);
+      }
+      $('race-summary').textContent = `${run.metrics.laps.toFixed(2)} ego laps · ${run.metrics.total_passes} passes across the field · ${run.metrics.lap_traffic_passes} involving lap traffic`;
       $('protocol').replaceChildren();
       for (const item of [`6 cars`, `Replan every ${run.dt.toFixed(1)} s`, `${run.horizon.toFixed(1)} s horizon`, `${run.planner.intervals} shooting intervals`, `${run.duration_limit_s.toFixed(0)} s time limit`]) {
         const span = document.createElement('span');
@@ -344,13 +357,15 @@
       name.textContent = `${run.vehicles[id].number} · ${run.vehicles[id].controller}`;
       const gap = document.createElement('span');
       gap.className = 'gap';
-      gap.textContent = rank ? `+${(ordered[0].state[0] - state[0]).toFixed(0)} m` : 'Leader';
+      const distance = ordered[0].state[0] - state[0],
+        lapsBehind = Math.floor(distance / run.track.length);
+      gap.textContent = !rank ? 'Leader' : lapsBehind ? `+${lapsBehind} L · ${(distance % run.track.length).toFixed(0)} m` : `+${distance.toFixed(0)} m`;
       button.append(pos, swatch, name, gap);
       button.onclick = () => focus(id);
       $('standings').append(button);
     });
     $('race-clock').textContent = `${Math.floor(time / 60)}:${(time % 60).toFixed(1).padStart(4, '0')}`;
-    $('race-state').textContent = time >= run.metrics.duration_s ? outcome(run.metrics) : `Seed ${run.seed} · Lap ${Math.floor(Math.max(0, states[selected][0]) / run.track.length) + 1}`;
+    $('race-state').textContent = time >= run.metrics.duration_s ? outcome(run.metrics) : `Seed ${run.seed} · Lap ${Math.floor(Math.max(0, states[selected][0] - run.states[0][selected][0]) / run.track.length) + 1}`;
     $('time-label').textContent = `${time.toFixed(1)} / ${run.metrics.duration_s.toFixed(1)} s`;
     $('timeline').value = time;
     $('controller-title').textContent = `${car.number} · ${car.controller}${car.controller === 'HILEPP' ? ' (HILEPP-II)' : ''}`;
@@ -369,7 +384,7 @@
       const mode = document.createElement('span'),
         braking = plan.modes[j] === 'follower_braking';
       mode.className = braking ? 'braking' : 'constant';
-      mode.textContent = braking ? 'Full braking · behind' : 'Constant speed · ahead / alongside';
+      mode.textContent = braking ? `Braking ${run.vehicles[id].limits.longitudinal_min.toFixed(1)} m/s² · behind` : 'Constant speed · ahead / alongside';
       row.append(name, gap, mode);
       $('opponent-modes').append(row);
     });else $('opponent-modes').textContent = 'No MPC predictions for direct SAC. Select an opponent to inspect its controller.';
