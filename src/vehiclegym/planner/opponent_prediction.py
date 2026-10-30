@@ -28,21 +28,32 @@ def predict_opponents(ego, opponents, time_grid, track, braking=8.0):
     """Return (opponent, horizon node, state) trajectories and assumption labels."""
     opponents = normalize_opponents(opponents)
     trajectories = np.repeat(opponents[:, None, :], len(time_grid), axis=1)
-    modes = []
-    for index, initial in enumerate(opponents):
-        behind = initial[0] < ego[0] - 4.6
-        modes.append("follower_braking" if behind else "constant_velocity_heading")
-        acceleration = -braking if behind else 0.0
-        state = initial.copy()
-        for k, interval in enumerate(np.diff(time_grid), start=1):
-            # Integrate the curvilinear position with measured alpha held constant.
-            # Split at standstill to avoid reverse motion during a braking assumption.
-            moving_dt = min(interval, state[3] / braking) if behind else interval
-            speed = max(0.0, state[3] + acceleration * moving_dt / 2)
-            curvature = np.interp(state[0], track.s, track.curvature)
-            state[0] += moving_dt * speed * np.cos(initial[2]) / (1 - state[1] * curvature)
-            state[1] += moving_dt * speed * np.sin(initial[2])
-            state[1] = np.clip(state[1], -track.half_width + 1.1, track.half_width - 1.1)
-            state[3] = max(0.0, state[3] + acceleration * moving_dt)
-            trajectories[index, k] = state
-    return trajectories, tuple(modes)
+    behind = opponents[:, 0] < ego[0] - 4.6
+    modes = tuple("follower_braking" if value else "constant_velocity_heading" for value in behind)
+    acceleration = np.where(behind, -braking, 0.0)
+    state = opponents.copy()
+
+    def derivative(value):
+        curvature = np.interp(value[:, 0], track.s, track.curvature)
+        return np.column_stack(
+            (
+                value[:, 3] * np.cos(value[:, 2]) / (1 - value[:, 1] * curvature),
+                value[:, 3] * np.sin(value[:, 2]),
+                np.zeros(len(value)),
+                acceleration,
+                np.zeros(len(value)),
+            )
+        )
+
+    for k, interval in enumerate(np.diff(time_grid), start=1):
+        # RK4 with each braking trajectory split exactly at standstill.
+        dt = np.where(behind, np.minimum(interval, state[:, 3] / braking), interval)[:, None]
+        k1 = derivative(state)
+        k2 = derivative(state + dt * k1 / 2)
+        k3 = derivative(state + dt * k2 / 2)
+        k4 = derivative(state + dt * k3)
+        state += dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6
+        state[:, 3] = np.maximum(0.0, state[:, 3])
+        state[:, 1] = np.clip(state[:, 1], -track.half_width + 1.1, track.half_width - 1.1)
+        trajectories[:, k] = state
+    return trajectories, modes

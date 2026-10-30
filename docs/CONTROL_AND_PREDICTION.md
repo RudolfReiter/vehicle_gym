@@ -1,27 +1,31 @@
-# Control, prediction, and replay semantics
+# Control and prediction in the six-car race
 
-## What is replanned, and what is predicted?
+At control time `t`, the simulator copies the states of all six vehicles. Each MPC receives its own state and the five measured opponent states from that snapshot. Its optimizer returns a five-second trajectory and a sequence of controls. Only the first control is applied for 0.2 seconds; all vehicles then advance simultaneously. The procedure repeats at the next control time.
 
-Every 0.25 s, `RacingWorld.step` reads the current ego and opponent states, builds new opponent trajectories, solves a fresh 3 s nonlinear MPC problem, applies **only the first force/steering-rate command**, and advances the physical simulation by five 0.05 s substeps. The rest of the control horizon is discarded; the previous solution is only a warm start for the next optimization.
+The browser displays recorded solver outputs. It does not compute or extrapolate the race itself. Interpolation between measured frames smooths playback; the current planning horizon updates at the recorded control frequency.
 
-The blue path on the page is that current **ego plan**. Orange paths are the **other vehicles’ obstacle trajectories actually supplied to that solve**. They are exported from `Plan.opponent_predictions`, not reconstructed later by the browser. Translucent cars mark the same selected future timestamp within the current solve. The page replays these recorded solves; it does not run optimization in JavaScript.
+## Three distinct controllers
 
-Section IV-B.3 of the paper distinguishes roles. A leading or alongside opponent retains measured speed and heading error. An opponent fully behind the ego (more than 4.6 m) is assigned braking at 8 m/s² until standstill. The braking trajectory is a feasibility assumption about a follower yielding, **not a prediction that it intends to stop**. This recreation integrates the position using midpoint speed and current curvature, with lateral clipping at the road boundary; it does not duplicate the paper’s RK4 predictor exactly. No future opponent state or controller action enters the predictor.
-
-An optional display holds one opponent assumption for 3 s and compares its ghost with the actual opponent at the same timestamp. The reported separation is diagnostic, especially for braking assumptions. MPC keeps replanning underneath it. An earlier page instead froze the ego plan; divergence from an old ego plan is expected with replanning and is not an obstacle prediction error. That confusing default comparison has been removed.
-
-## Interactive scenarios
-
-The `interactive-v2` environment uses 24 s episodes, mirrored lateral arrangements, seeded position/speed perturbations, and synthetic track curvature. The ego is capped at 32 m/s.
-
-| Task | Initial traffic | Opponent free-running targets |
+| Name | Ego action | Other five vehicles |
 |---|---|---|
-| Overtaking | Three cars 23, 49, 76 m ahead, staggered across the track | 25, 26, 27 m/s |
-| Blocking | Three challengers 20, 43, 66 m behind, approaching on different lines | 36, 35, 34 m/s |
-| Mixed | Two slower cars ahead and a faster challenger behind | 25, 36, 27 m/s |
+| MPC | Fixed references and weights → nonlinear MPC → force and steering rate | Independent MPC |
+| HILEPP | Four-dimensional SAC action → speed/lateral references and their cost weights → the same MPC → actuators | Independent MPC |
+| SAC | Two-dimensional SAC action → force and steering rate directly | Independent MPC |
 
-Distances are perturbed by ±2 m; speeds by ±0.4 m/s. Opponents are simulated with the original vehicle dynamics and a fixed gap-seeking controller. They evaluate center/left/right passing lines, hold a changed target for 2.5 s, avoid crossing alongside cars, and slow for a car ahead. They are neither learned policies nor the paper’s MPC opponents. Different speed capabilities and shorter episodes make this a compact interaction task, not the original racing benchmark.
+Only MPC is part of the vehicle_gym competition. The learned comparisons live in the separate recreated HILEPP repository. Direct SAC has no ego MPC plan, safety-filter fallback or obstacle-prediction module. Selecting one of its opponents still shows that opponent's MPC.
 
-Pass events require a change of relative order followed by 4.6 m of clearance. A defensive move requires more than 0.8 m of ego lateral motion over two seconds, more than 0.8 m reduction in lateral separation to a challenger’s line, and that challenger being held up. A 2.5 s cooldown prevents repeatedly counting the same movement. Held-up vehicle-seconds count opponents 4.6–30 m behind and within 2.7 m laterally whose controller target is reduced by more than 1 m/s and whose actual speed is at least 0.5 m/s below their free-running target. The general SAC policy uses only progress/rank reward. The optional HILEPP defensive specialist has a separately documented lane-coverage and held-up bonus during training; pass and defensive-move event counts are never added to either reward. Multiple opponents can contribute simultaneously.
+## Other-car assumptions
 
-A defensive event alone does not prove a strong policy: read event counts alongside opponent passes, episode completion, collisions, and solver failures. Oriented Cartesian body rectangles are checked every 0.05 s. `min_body_separation_m` is retained as a Frenet axis-separation proxy; it is not Euclidean clearance.
+For each observer, a car ahead or alongside keeps its measured speed and heading error in the curvilinear frame. Once it is more than one vehicle length (4.6 m) behind, its assumed acceleration switches to −10 m/s² until standstill. Lateral predictions are clipped to the drivable corridor. RK4 integration splits exactly at standstill and prevents reverse motion.
+
+This full-braking trajectory represents the assumed ability of a follower to yield. It is not a prediction of the other MPC's intended braking command. Different observers can assign different modes to the same physical car. None of them has access to another controller's planned controls or future simulation states.
+
+The cyan curve is the selected controller's planned ego motion. Dashed yellow curves show constant-speed opponent assumptions; dotted rose curves show full-braking assumptions. All solid cars are actual simulated vehicles. There are no ghost cars, held forecasts or prediction-accuracy comparisons.
+
+## Numerical interpretation
+
+SQP iterates are accepted at status 0 or iteration-limit status 2 if state trajectories are finite and equality/inequality residuals are below 0.02. This is numerical acceptance, not an optimality or safety certificate. Complementarity and stationarity are optimization convergence measures and are not described as physical constraint violations.
+
+State and obstacle constraints are soft. Their slack can be positive even when the numerical problem is solved. Elliptical obstacle margins are 9 m longitudinally and 3.8 m laterally. Physical collisions use oriented 4.6 × 1.9 m rectangles and are checked at four integration substeps. Track exits also account for the body footprint. The rendered track edge follows the same conservative usable width as these checks, rather than displaying a wider corridor than the simulation permits.
+
+All race termination reasons and involved vehicle IDs are retained. The horizon shown at a failed terminal solve is not applied. A completed simulation is evidence about that rollout only, not a general safety guarantee.

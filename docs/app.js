@@ -1,97 +1,451 @@
-(() => {
+/* A recorded experiment viewer: playback never runs a controller in the browser. */
+(function () {
   'use strict';
-  const data = window.EXPERIMENT, $ = id => document.getElementById(id);
-  const scene = new window.DrivingScene($('scene'), data);
-  const names = {overtaking: 'Overtaking · pass a staggered pack', blocking: 'Blocking · defend against faster challengers', mixed: 'Mixed traffic · pass ahead, defend behind'};
-  const modes = {follower_braking: 'Follower: brake-to-stop feasibility assumption', constant_velocity_heading: 'Leader / alongside: constant-speed, measured-heading estimate'};
-  const colors = ['#72877c','#7a8193','#95867e'];
-  let scenario = data.defense_training ? data.scenarios.find(s=>s.id==='blocking') : data.scenarios[0], run = scenario.runs[data.kind === 'hilepp' ? 2 : 0];
-  let time = 0, playing = false, lastFrame = null;
-  $('scenario').innerHTML = data.scenarios.map(s=>`<option value="${s.id}">${s.id[0].toUpperCase()+s.id.slice(1)}</option>`).join('');
-  $('scenario').value=scenario.id;
-  function selectRun() {
-    run = scenario.runs.find(r=>r.id===$('method').value)||scenario.runs[0];
-    time=0;playing=false;lastFrame=null;scene.focus=null;
-    $('play').textContent='Play';$('seek').max=run.time.at(-1);$('seek').value=0;
-    $('scene-title').textContent=names[scenario.id];
-    $('scene-subtitle').textContent=`${run.name} · seed ${run.seed} · MPC replans every ${data.dt.toFixed(2)} s`;
-    const m=run.metrics;
-    $('run-status').textContent=`${m.completed?'Episode completed':'Episode ended early'} · ${m.duration_s.toFixed(2)} s · ${m.solver_failures} solver failures · ${m.collision?'collision recorded':'no collision recorded'} · ${m.ego_passes} ego passes · ${m.opponent_passes} opponent passes · ${m.defensive_moves} measured defensive moves`;
-    $('interaction-summary').textContent=`Opponents held below their free-running target: ${m.held_up_vehicle_seconds.toFixed(1)} vehicle-seconds. Ego under attack: ${m.under_attack_seconds.toFixed(1)} s. Target speeds: ${run.opponent_target_speeds.map(v=>v.toFixed(1)).join(', ')} m/s; ego limit ${run.ego_speed_limit.toFixed(0)} m/s.`;
-    renderEvents();drawPlots();render();
+
+  const $ = id => document.getElementById(id),
+    manifest = window.RACE_MANIFEST,
+    scene = new window.RaceScene($('scene'));
+  let run = null,
+    time = 0,
+    playing = false,
+    last = null,
+    request = 0,
+    selected = 0,
+    plotCache = null,
+    uiKey = '';
+  const methods = [...new Set(manifest.runs.map(r => r.method))];
+  const option = (value, label) => {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = label;
+    return o;
+  };
+  methods.forEach(m => $('method').append(option(m, m)));
+  if (manifest.kind === 'hilepp') {
+    $('execution').replaceChildren();
+    const modes = [...new Set(manifest.runs.map(run => run.execution))];
+    modes.forEach(mode => $('execution').append(option(mode, mode === 'sampled' ? 'Sampled policy' : 'Mean action')));
+    $('execution').disabled = modes.length < 2;
   }
-  function setScenario() {
-    scenario=data.scenarios.find(s=>s.id===$('scenario').value)||data.scenarios[0];
-    const previous=run.id;
-    $('method').innerHTML=scenario.runs.map(r=>`<option value="${r.id}">${r.name}</option>`).join('');
-    $('method').value=scenario.id==='blocking'&&previous==='learned'&&data.defense_training?(data.defense_reference_limit?'defense_limited':'defense'):previous.startsWith('defense')?'learned':previous;selectRun();
+  [...new Set(manifest.runs.map(r => r.track))].forEach(t => $('track').append(option(t, t === 'Sepang' ? 'Sepang · stress test' : t)));
+  const outcome = m => m.completed ? 'Completed' : ({
+    collision: 'Collision',
+    track_exit: 'Track exit',
+    solver_failure: 'Solver failure'
+  }[m.stop.kind] || m.stop.kind) + (m.stop.vehicles.length ? ' · car ' + m.stop.vehicles.map(i => String(i + 1).padStart(2, '0')).join(', ') : '');
+  function actorExecution() {
+    return manifest.kind === 'hilepp' ? $('execution').value : null;
   }
-  function render(dt=1/60) {
-    const opponent=Number($('opponent').value),overlay=$('overlay').value,probe=Number($('probe').value);
-    scene.render(scenario,run,time,{overlay,opponent,probe,envelopes:$('envelopes').checked,dt});
-    const state=scene.lastState,index=scene.lastPlan.index,plan=scene.lastPlan.plan;
-    $('speed-value').textContent=`${state[3].toFixed(1)} m/s`;
-    $('reference-value').textContent=`${run.references[index].speed.toFixed(1)} m/s`;
-    const rank=1+[0,1,2].filter(j=>window.sampleRun(run,time,j)[0]>state[0]).length;
-    $('rank-value').textContent=`${rank} / 4`;
-    $('solve-value').textContent=`t = ${plan.origin.toFixed(2)} s`;
-    $('time').textContent=`${time.toFixed(1)} / ${run.time.at(-1).toFixed(1)} s`;
-    $('seek').value=time;$('seek').setAttribute('aria-valuetext',`${time.toFixed(1)} seconds`);
-    const explanation=overlay==='audit'&&scene.lastAudit
-      ? `${modes[scene.lastAudit.mode]}. Held at t=${scene.lastAudit.origin.toFixed(2)} s; age ${scene.lastAudit.elapsed.toFixed(2)} s; separation from the actual opponent at the same time: ${scene.lastError.toFixed(2)} m. MPC continues to replan.`
-      : `${modes[plan.opponent_modes[opponent]]}. The blue ego plan and orange obstacle trajectories come from the same solve at t=${plan.origin.toFixed(2)} s. Ghosts mark t=${(plan.origin+probe).toFixed(2)} s.`;
-    $('overlay-explanation').textContent=!plan.success&&overlay==='mpc' ? `MPC rejected this solve at t=${plan.origin.toFixed(2)} s (${plan.status}). No control from it was applied; the episode stops here.` : explanation;
-    $('probe').disabled=overlay==='audit';
-    for(const cursor of document.querySelectorAll('.plot-cursor')) {
-      const x=44+Math.min(time,run.episode_limit_s)/run.episode_limit_s*322;
-      cursor.setAttribute('x1',x);cursor.setAttribute('x2',x);
+  function matchesExecution(entry) {
+    return manifest.kind !== 'hilepp' || entry.execution === actorExecution();
+  }
+  function renderResults() {
+    $('results-body').replaceChildren();
+    for (const record of manifest.evaluation.filter(row => manifest.kind !== "hilepp" || row.execution === actorExecution())) {
+      const row = document.createElement('tr'),
+        m = record.metrics;
+      for (const value of [record.track, record.method, record.seed, `${m.duration_s.toFixed(1)} s`, `${m.progress_m.toFixed(0)} m`, `${m.rank} / 6`, m.passes, outcome(m)]) {
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        row.append(cell);
+      }
+      $('results-body').append(row);
+    }
+    if (manifest.kind === 'hilepp') {
+      $('results-mode').textContent = actorExecution() === 'sampled' ? '· sampled policies' : '· mean actions';
+      $('results-figure').src = `assets/evaluation-${actorExecution()}.svg`;
     }
   }
-  function plot(id,lines,low,high,unit) {
-    const duration=run.episode_limit_s,x=t=>44+t/duration*322,y=v=>153-(v-low)/(high-low)*115;
-    let markup=`<svg viewBox="0 0 390 200" role="img" aria-label="${unit} over elapsed time">`;
-    for(let i=0;i<4;i++) {const v=low+(high-low)*i/3,yy=y(v);markup+=`<line x1="44" x2="366" y1="${yy}" y2="${yy}" stroke="#e1e7eb"/><text x="37" y="${yy+5}" text-anchor="end" fill="#526170" font-size="14">${v.toFixed(0)}</text>`;}
-    if(low<0&&high>0)markup+=`<line x1="44" x2="366" y1="${y(0)}" y2="${y(0)}" stroke="#2166ac" stroke-dasharray="3 3"/>`;
-    for(const t of [0,duration/4,duration/2,duration*3/4,duration])markup+=`<text x="${x(t)}" y="178" text-anchor="middle" fill="#526170" font-size="14">${t}</text>`;
-    markup+=`<text x="44" y="19" fill="#526170" font-size="14">${unit}</text><text x="366" y="198" text-anchor="end" fill="#526170" font-size="14">Time (s)</text>`;
-    for(const line of lines)markup+=`<polyline points="${line.values.map(([t,v])=>`${x(t)},${y(v)}`).join(' ')}" fill="none" stroke="${line.color}" stroke-width="2.4" ${line.dash?'stroke-dasharray="5 4"':''}/>`;
-    markup+='<line class="plot-cursor" x1="44" x2="44" y1="30" y2="153" stroke="#263747" opacity=".45"/></svg>';
-    $(id).innerHTML=markup;
+  renderResults();
+  if (manifest.training) {
+    $('training-note').textContent = Object.entries(manifest.training).map(([method, t]) => `${method}: ${t.steps.toLocaleString()} training interactions, ${t.gradient_updates.toLocaleString()} SAC updates${t.pretraining ? `, stage seeds ${t.pretraining.training_seed} and ${t.training_seed}` : `, seed ${t.training_seed}`}`).join('. ') + '. The final checkpoints are evaluated deterministically on reserved race seeds.';
   }
-  function drawPlots() {
-    const actual=column=>run.time.map((t,i)=>[t,run.states[i][column]]);
-    const ref=key=>run.time.map((t,i)=>[t,run.references[Math.min(i,run.references.length-1)][key]]);
-    plot('speed-plot',[{values:actual(3),color:'#2166ac'},{values:ref('speed'),color:'#526170',dash:true}],0,40,'Ego speed (m/s)');
-    const lateralLines=[{values:actual(1),color:'#2166ac'},{values:ref('lateral'),color:'#526170',dash:true}];
-    if(run.raw_lateral_references)lateralLines.push({values:run.time.map((t,i)=>[t,run.raw_lateral_references[Math.min(i,run.raw_lateral_references.length-1)]]),color:'#76548a',dash:true});
-    plot('lateral-plot',lateralLines,-6,6,'Lateral position (m)');
-    const gaps=[0,1,2].map(j=>({values:run.time.map((t,i)=>[t,run.opponents[i][j][0]-run.states[i][0]]),color:colors[j]}));
-    const values=gaps.flatMap(l=>l.values.map(v=>v[1]));
-    plot('gap-plot',gaps,Math.min(-10,...values)-5,Math.max(10,...values)+5,'Opponent distance ahead (m)');
-    const opponent=Number($('opponent').value);
-    plot('opponent-speed-plot',[
-      {values:run.time.map((t,i)=>[t,run.opponents[i][opponent][3]]),color:colors[opponent]},
-      {values:run.time.map(t=>[t,run.opponent_target_speeds[opponent]]),color:'#526170',dash:true}
-    ],15,40,`Opponent ${opponent+1} speed (m/s)`);
+  function seeds() {
+    const current = $('seed').value;
+    $('seed').replaceChildren();
+    manifest.runs.filter(r => r.method === $('method').value && r.track === $('track').value && matchesExecution(r)).forEach(r => $('seed').append(option(r.seed, r.seed)));
+    if ([...$('seed').options].some(o => o.value === current)) $('seed').value = current;
+    load();
   }
-  function renderEvents() {
-    const labels={ego_pass:'Ego passes',opponent_pass:'Ego is passed by',defensive_move:'Ego covers the line of'};
-    $('events').innerHTML=run.events.length?run.events.map((event,i)=>`<button data-event="${i}">${event.time.toFixed(1)} s · ${labels[event.kind]} opponent ${event.opponent+1}</button>`).join(''):'No completed pass or measured defensive move in this episode.';
+  async function load() {
+    const token = ++request;
+    playing = false;
+    updatePlay();
+    $('load-status').hidden = false;
+    $('load-status').textContent = 'Loading recorded race…';
+    const record = manifest.runs.find(r => r.track === $('track').value && r.method === $('method').value && String(r.seed) === $('seed').value && matchesExecution(r));
+    try {
+      const response = await fetch(`data/${record.file}`);
+      if (!response.ok) throw new Error(`Replay unavailable (HTTP ${response.status})`);
+      const bytes = await response.arrayBuffer();
+      let content;
+      if (new Uint8Array(bytes)[0] === 31) {
+        if (typeof DecompressionStream === 'undefined') throw new Error('This browser needs gzip stream support. Try a current Firefox, Safari or Chromium browser.');
+        content = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).json();
+      } else content = JSON.parse(new TextDecoder().decode(bytes));
+      if (token !== request) return;
+      run = content;
+      scene.setRun(run);
+      time = 0;
+      selected = 0;
+      scene.focus = 0;
+      plotCache = null;
+      uiKey = '';
+      $('event').replaceChildren(option(0, 'Race start'));
+      run.events.filter(event => event.kind === 'pass').forEach(event => $('event').append(option(Math.max(0, event.time - 3), `${event.time.toFixed(1)} s · car ${event.vehicle + 1} passes car ${event.opponent + 1}`)));
+      $('focus').replaceChildren();
+      run.vehicles.forEach(v => $('focus').append(option(v.id, `${v.number} · ${v.controller}`)));
+      $('timeline').max = run.metrics.duration_s;
+      $('timeline').value = 0;
+      $('download').href = `data/${record.file}`;
+      $('circuit-name').textContent = `${run.track.name} · ${(run.track.length / 1000).toFixed(2)} km`;
+      $('protocol').replaceChildren();
+      for (const item of [`6 cars`, `Replan every ${run.dt.toFixed(1)} s`, `${run.horizon.toFixed(1)} s horizon`, `${run.planner.intervals} shooting intervals`, `${run.duration_limit_s.toFixed(0)} s time limit`]) {
+        const span = document.createElement('span');
+        span.textContent = item;
+        $('protocol').append(span);
+      }
+      $('load-status').hidden = true;
+      draw();
+    } catch (error) {
+      if (token === request) $('load-status').textContent = `${error.message}. Serve this page over HTTP using the repository preview command.`;
+    }
   }
-  $('events').addEventListener('click',event=>{const index=event.target.dataset?.event;if(index===undefined)return;time=Math.max(0,run.events[Number(index)].time-1);playing=false;scene.focus=null;$('play').textContent='Play';render()});
-  $('scenario').addEventListener('change',setScenario);$('method').addEventListener('change',selectRun);
-  $('view').addEventListener('change',()=>{scene.view=$('view').value;scene.focus=null;render()});
-  for(const id of ['overlay','probe','envelopes'])$(id).addEventListener('change',()=>render());
-  $('opponent').addEventListener('change',()=>{drawPlots();render()});
-  $('play').addEventListener('click',()=>{if(time>=run.time.at(-1)){time=0;scene.focus=null;}playing=!playing;lastFrame=null;$('play').textContent=playing?'Pause':'Play';render()});
-  $('reset').addEventListener('click',()=>{time=0;playing=false;scene.focus=null;$('play').textContent='Play';render()});
-  $('seek').addEventListener('input',()=>{time=Number($('seek').value);scene.focus=null;render()});
-  document.addEventListener('visibilitychange',()=>{if(document.hidden){playing=false;lastFrame=null;$('play').textContent='Play'}});
-  function frame(now) {
-    const dt=lastFrame===null?0:Math.min((now-lastFrame)/1000,.05);lastFrame=now;const wasPlaying=playing;
-    if(playing){time=Math.min(run.time.at(-1),time+dt*Number($('rate').value));if(time>=run.time.at(-1)){playing=false;$('play').textContent='Play'}}
-    if(wasPlaying||scene.dirty||scene.moving)render(Math.max(dt,1/120));requestAnimationFrame(frame);
+  function updatePlay() {
+    $('play').textContent = playing ? '❚❚ Pause' : '▶ Play';
+    $('play').setAttribute('aria-label', playing ? 'Pause recorded race' : 'Play recorded race');
   }
-  window.replayStatus=()=>({scenario:scenario.id,method:run.id,time,playing,view:scene.view,duration:run.time.at(-1)});
-  setScenario();requestAnimationFrame(frame);
+  function focus(id) {
+    selected = +id;
+    scene.focus = selected;
+    $('focus').value = selected;
+    draw();
+  }
+  function fit(canvas) {
+    const c = canvas.getContext('2d'),
+      box = canvas.getBoundingClientRect(),
+      dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (canvas.width !== Math.round(box.width * dpr) || canvas.height !== Math.round(box.height * dpr)) {
+      canvas.width = Math.round(box.width * dpr);
+      canvas.height = Math.round(box.height * dpr);
+    }
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return [c, box.width, box.height];
+  }
+  function map(states) {
+    const [c, w, h] = fit($('map')),
+      g = scene.geometry,
+      b = g.bounds,
+      pad = 14,
+      scale = Math.min((w - 2 * pad) / (b[1] - b[0]), (h - 2 * pad) / (b[3] - b[2]));
+    const p = xy => [w / 2 + (xy[0] - (b[0] + b[1]) / 2) * scale, h / 2 - (xy[1] - (b[2] + b[3]) / 2) * scale];
+    c.clearRect(0, 0, w, h);
+    c.beginPath();
+    g.xy.forEach((xy, i) => i ? c.lineTo(...p(xy)) : c.moveTo(...p(xy)));
+    c.strokeStyle = '#abb4b4';
+    c.lineWidth = 3;
+    c.stroke();
+    states.forEach((x, i) => {
+      const q = p(g.point(x[0], x[1]));
+      c.beginPath();
+      c.arc(...q, i === selected ? 4.3 : 3.1, 0, 2 * Math.PI);
+      c.fillStyle = run.vehicles[i].color;
+      c.fill();
+      if (i === selected) {
+        c.strokeStyle = 'white';
+        c.lineWidth = 1.3;
+        c.stroke();
+      }
+    });
+  }
+  function valueGrid(entries) {
+    const grid = document.createElement('div');
+    grid.className = 'values';
+    for (const [label, value] of entries) {
+      const div = document.createElement('div');
+      div.className = 'value';
+      const span = document.createElement('span');
+      span.textContent = label;
+      div.append(span, document.createTextNode(value));
+      grid.append(div);
+    }
+    return grid;
+  }
+  function plots() {
+    const maxTime = Math.max(run.dt, run.metrics.duration_s);
+    if (!plotCache) plotCache = {};
+    for (const kind of ['speed', 'rank']) {
+      const [canvasContext, w, h] = fit($(kind + '-plot')),
+        left = 32,
+        right = w - 8,
+        top = 10,
+        bottom = h - 23;
+      const key = `${selected}/${w}/${h}/${window.devicePixelRatio || 1}`;
+      let cache = plotCache[kind];
+      if (!cache || cache.key !== key) {
+        const background = document.createElement('canvas'),
+          dpr = Math.min(2, window.devicePixelRatio || 1);
+        background.width = Math.round(w * dpr);
+        background.height = Math.round(h * dpr);
+        const c = background.getContext('2d');
+        c.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const ymax = kind === 'speed' ? Math.ceil(Math.max(...run.states.flatMap(states => states.map(state => state[3] * 3.6))) / 20) * 20 : 6;
+        const x = t => left + (right - left) * t / maxTime,
+          y = v => kind === 'speed' ? bottom - (bottom - top) * v / ymax : top + (bottom - top) * (v - 1) / 5;
+        c.clearRect(0, 0, w, h);
+        c.font = '11px sans-serif';
+        c.fillStyle = '#75818a';
+        c.lineWidth = 1;
+        for (const tick of kind === 'speed' ? [0, ymax / 2, ymax] : [1, 3, 6]) {
+          c.beginPath();
+          c.moveTo(left, y(tick));
+          c.lineTo(right, y(tick));
+          c.strokeStyle = '#e5eaed';
+          c.stroke();
+          c.textAlign = 'right';
+          c.fillText(String(tick), left - 7, y(tick) + 4);
+        }
+        for (const tick of [0, maxTime / 2, maxTime]) {
+          c.textAlign = tick === 0 ? 'left' : tick === maxTime ? 'right' : 'center';
+          c.fillText(`${tick.toFixed(0)} s`, x(tick), h - 5);
+        }
+        for (let id = 0; id < 6; id++) {
+          c.beginPath();
+          run.states.forEach((states, k) => {
+            const value = kind === 'speed' ? states[id][3] * 3.6 : 1 + states.filter((state, j) => j !== id && state[0] > states[id][0]).length;
+            const point = [x(k * run.dt), y(value)];
+            k ? c.lineTo(...point) : c.moveTo(...point);
+          });
+          c.lineWidth = id === selected ? 2 : 1.2;
+          c.globalAlpha = id === selected ? 1 : .7;
+          c.strokeStyle = run.vehicles[id].color;
+          c.stroke();
+        }
+        c.globalAlpha = 1;
+        cache = plotCache[kind] = {
+          key,
+          background
+        };
+      }
+      canvasContext.clearRect(0, 0, w, h);
+      canvasContext.drawImage(cache.background, 0, 0, w, h);
+      const cursor = left + (right - left) * time / maxTime;
+      canvasContext.beginPath();
+      canvasContext.moveTo(cursor, top);
+      canvasContext.lineTo(cursor, bottom);
+      canvasContext.strokeStyle = '#253743';
+      canvasContext.lineWidth = 1;
+      canvasContext.stroke();
+    }
+  }
+  function parameterPlots() {
+    if (manifest.kind !== 'hilepp') return;
+    const duration = Math.max(run.dt, run.metrics.duration_s);
+    for (const kind of ['lateral', 'weights']) {
+      const [target, w, h] = fit($(kind + '-plot')),
+        left = 36,
+        right = w - 8,
+        top = 10,
+        bottom = h - 24,
+        key = `${selected}/${w}/${h}`;
+      let cache = plotCache[kind];
+      if (!cache || cache.key !== key) {
+        const background = document.createElement('canvas'),
+          dpr = Math.min(2, window.devicePixelRatio || 1);
+        background.width = Math.round(w * dpr);
+        background.height = Math.round(h * dpr);
+        const c = background.getContext('2d');
+        c.setTransform(dpr, 0, 0, dpr, 0, 0);
+        c.font = '11px sans-serif';
+        c.fillStyle = '#75818a';
+        if (run.frames[0].plans[selected] === null) {
+          c.fillText('Direct SAC: no MPC references or cost weights', left, h / 2);
+        } else {
+          const x = t => left + (right - left) * t / duration,
+            y = v => kind === 'lateral' ? bottom - (bottom - top) * (v + 5) / 10 : bottom - (bottom - top) * (Math.log10(v) + 1) / Math.log10(200);
+          for (const tick of kind === 'lateral' ? [-5, 0, 5] : [.1, 1, 10]) {
+            c.beginPath();
+            c.moveTo(left, y(tick));
+            c.lineTo(right, y(tick));
+            c.strokeStyle = '#e5eaed';
+            c.lineWidth = 1;
+            c.stroke();
+            c.textAlign = 'right';
+            c.fillText(String(tick), left - 7, y(tick) + 4);
+          }
+          for (let series = 0; series < 2; series++) {
+            c.beginPath();
+            run.frames.forEach((frame, k) => {
+              const ref = frame.references[selected];
+              const value = kind === 'lateral' ? series === 0 ? ref.lateral : run.states[k][selected][1] : series === 0 ? ref.speed_weight : ref.lateral_weight;
+              const p = [x(frame.time), y(value)];
+              k ? c.lineTo(...p) : c.moveTo(...p);
+            });
+            c.strokeStyle = series === 0 ? '#176da5' : '#b78035';
+            c.lineWidth = 1.6;
+            c.setLineDash(kind === 'lateral' && series === 1 ? [4, 3] : []);
+            c.stroke();
+            c.setLineDash([]);
+          }
+          for (const tick of [0, duration / 2, duration]) {
+            c.textAlign = tick === 0 ? 'left' : tick === duration ? 'right' : 'center';
+            c.fillText(`${tick.toFixed(0)} s`, x(tick), h - 5);
+          }
+        }
+        cache = plotCache[kind] = {
+          key,
+          background
+        };
+      }
+      target.clearRect(0, 0, w, h);
+      target.drawImage(cache.background, 0, 0, w, h);
+      const x = left + (right - left) * time / duration;
+      target.beginPath();
+      target.moveTo(x, top);
+      target.lineTo(x, bottom);
+      target.lineWidth = 1;
+      target.strokeStyle = '#253743';
+      target.stroke();
+    }
+  }
+  function draw() {
+    if (!run) return;
+    scene.render(time);
+    const states = scene.geometry.states(run, time),
+      frame = run.frames[Math.min(run.frames.length - 1, Math.floor(time / run.dt))],
+      plan = frame.plans[selected],
+      ref = frame.references[selected],
+      car = run.vehicles[selected];
+    map(states);
+    plots();
+    parameterPlots();
+    const nextUiKey = `${run.track.name}/${run.method}/${run.seed}/${selected}/${Math.floor(time * 10)}`;
+    if (uiKey === nextUiKey) return;
+    uiKey = nextUiKey;
+    const ordered = states.map((state, id) => ({
+      state,
+      id
+    })).sort((a, b) => b.state[0] - a.state[0]);
+    $('standings').replaceChildren();
+    ordered.forEach(({
+      state,
+      id
+    }, rank) => {
+      const button = document.createElement('button');
+      button.className = 'standing' + (id === selected ? ' selected' : '');
+      button.type = 'button';
+      button.setAttribute('aria-label', `Observe ${run.vehicles[id].name}, position ${rank + 1}`);
+      const pos = document.createElement('span');
+      pos.textContent = rank + 1;
+      const swatch = document.createElement('span');
+      swatch.className = 'swatch';
+      swatch.style.background = run.vehicles[id].color;
+      const name = document.createElement('span');
+      name.textContent = `${run.vehicles[id].number} · ${run.vehicles[id].controller}`;
+      const gap = document.createElement('span');
+      gap.className = 'gap';
+      gap.textContent = rank ? `+${(ordered[0].state[0] - state[0]).toFixed(0)} m` : 'Leader';
+      button.append(pos, swatch, name, gap);
+      button.onclick = () => focus(id);
+      $('standings').append(button);
+    });
+    $('race-clock').textContent = `${Math.floor(time / 60)}:${(time % 60).toFixed(1).padStart(4, '0')}`;
+    $('race-state').textContent = time >= run.metrics.duration_s ? outcome(run.metrics) : `Seed ${run.seed} · Lap ${Math.floor(Math.max(0, states[selected][0]) / run.track.length) + 1}`;
+    $('time-label').textContent = `${time.toFixed(1)} / ${run.metrics.duration_s.toFixed(1)} s`;
+    $('timeline').value = time;
+    $('controller-title').textContent = `${car.number} · ${car.controller}${car.controller === 'HILEPP' ? ' (HILEPP-II)' : ''}`;
+    const entries = [['Measured speed', `${(states[selected][3] * 3.6).toFixed(1)} km/h`], ['Force', `${(frame.commands[selected][0] / 1000).toFixed(2)} kN`], ['Steering rate', `${frame.commands[selected][1].toFixed(3)} rad/s`]];
+    if (plan) entries.push(['Target speed', `${(ref.speed * 3.6).toFixed(1)} km/h`], ['Lateral reference', `${ref.lateral.toFixed(2)} m`], ['Weights · speed / lateral', `${ref.speed_weight.toFixed(2)} / ${ref.lateral_weight.toFixed(2)}`]);
+    $('controller-values').replaceChildren(valueGrid(entries));
+    $('horizon-note').textContent = plan ? `Current solve at t = ${frame.time.toFixed(1)} s · ${plan.solve_ms.toFixed(1)} ms · ${plan.success ? 'accepted' : 'failed'} · obstacle slack ${plan.obstacle_slack.toExponential(1)}. ${frame.applied ? 'Only its first control input is applied.' : 'This step was not applied: the race stopped.'}` : 'Direct SAC acts on force and steering rate. This car has no MPC horizon or obstacle-prediction module.';
+    $('opponent-modes').replaceChildren();
+    if (plan) plan.opponent_ids.forEach((id, j) => {
+      const row = document.createElement('div');
+      row.className = 'mode-row';
+      const name = document.createElement('span');
+      name.textContent = `Car ${run.vehicles[id].number}`;
+      const gap = document.createElement('span');
+      gap.textContent = `${(plan.opponents[j][0][0] - run.states[Math.min(run.states.length - 1, Math.floor(time / run.dt))][selected][0]).toFixed(1)} m`;
+      const mode = document.createElement('span'),
+        braking = plan.modes[j] === 'follower_braking';
+      mode.className = braking ? 'braking' : 'constant';
+      mode.textContent = braking ? 'Full braking · behind' : 'Constant speed · ahead / alongside';
+      row.append(name, gap, mode);
+      $('opponent-modes').append(row);
+    });else $('opponent-modes').textContent = 'No MPC predictions for direct SAC. Select an opponent to inspect its controller.';
+  }
+  $('event').onchange = () => {
+    time = +$('event').value;
+    draw();
+  };
+  if (manifest.kind === 'hilepp') $('execution').onchange = () => {
+    renderResults();
+    seeds();
+  };
+  $('method').onchange = seeds;
+  $('track').onchange = seeds;
+  $('seed').onchange = load;
+  $('focus').onchange = () => focus($('focus').value);
+  $('camera').onchange = () => {
+    scene.mode = $('camera').value;
+    draw();
+  };
+  $('zoom').onchange = () => {
+    scene.zoom = +$('zoom').value;
+    draw();
+  };
+  $('predictions').onchange = () => {
+    scene.predictions = $('predictions').checked;
+    draw();
+  };
+  $('play').onclick = () => {
+    if (!run) return;
+    if (time >= run.metrics.duration_s) time = 0;
+    playing = !playing;
+    last = null;
+    updatePlay();
+    draw();
+  };
+  $('timeline').oninput = () => {
+    time = +$('timeline').value;
+    draw();
+  };
+  $('fullscreen').onclick = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();else await document.querySelector('.race').requestFullscreen();
+    } catch {}
+  };
+  window.addEventListener('resize', draw);
+  document.addEventListener('visibilitychange', () => {
+    last = null;
+  });
+  function tick(now) {
+    if (playing && run) {
+      if (last !== null && !document.hidden) time = Math.min(run.metrics.duration_s, time + Math.min((now - last) / 1000, .08) * +$('rate').value);
+      if (time >= run.metrics.duration_s) {
+        playing = false;
+        updatePlay();
+      }
+      draw();
+    }
+    last = now;
+    requestAnimationFrame(tick);
+  }
+  seeds();
+  requestAnimationFrame(tick);
+  window.RaceViewer = {
+    setTime(t) {
+      time = Math.max(0, Math.min(run.metrics.duration_s, t));
+      draw();
+    },
+    getState() {
+      return {
+        time,
+        playing,
+        selected,
+        execution: actorExecution(),
+        method: run?.method
+      };
+    }
+  };
 })();

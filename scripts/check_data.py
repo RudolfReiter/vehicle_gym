@@ -1,125 +1,49 @@
-"""Check exported experiment integrity, local page links, and source archive."""
+"""Validate recorded controllers, horizon timing, finite states and evaluation rows."""
 
+import gzip
 import json
-import math
-from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urlparse
-import zipfile
+import numpy as np
 
 root = Path(__file__).resolve().parents[1]
-docs = root / "docs"
-data = json.loads((docs / "data/experiment.json").read_text())
-js = (docs / "data/experiment.js").read_text()
-assert json.loads(js.removeprefix("window.EXPERIMENT=").strip().removesuffix(";")) == data
-assert data["environment_version"] == "interactive-v2"
-count = 0
-for scenario in data["scenarios"]:
-    for run in scenario["runs"]:
-        count += 1
-        assert len(run["states"]) == len(run["opponents"]) == len(run["time"])
-        assert len(run["plans"]) == len(run["references"])
-        assert len(run["applied_controls"]) == len(run["states"]) - 1
-        assert len(run["interactions"]) == len(run["plans"])
-        assert run["episode_limit_s"] == 24
-        if "reference_limit_m" in run:
-            assert len(run["raw_lateral_references"]) == len(run["references"])
-            for i, reference in enumerate(run["references"]):
-                n = run["states"][i][1]
-                limit = run["reference_limit_m"]
-                assert abs(reference["lateral"] - n) <= limit + 1e-9
-                assert reference["lateral"] == max(
-                    n - limit, min(n + limit, run["raw_lateral_references"][i])
-                )
-        assert run["time"][0] == 0
-        assert all(b > a for a, b in zip(run["time"], run["time"][1:]))
-        assert run["metrics"]["duration_s"] == run["time"][-1]
-        for state in run["states"]:
-            assert len(state) == 5 and all(math.isfinite(x) for x in state)
-        for index, plan in enumerate(run["plans"]):
-            assert plan["origin"] == index * data["dt"]
-            assert len(plan["opponent_predictions"]) == len(plan["opponent_modes"]) == 3
-            for j, prediction in enumerate(plan["opponent_predictions"]):
-                assert len(prediction) == 13
-                assert prediction[0] == run["opponents"][index][j]
-                expected = (
-                    "follower_braking"
-                    if prediction[0][0] < run["states"][index][0] - 4.6
-                    else "constant_velocity_heading"
-                )
-                assert plan["opponent_modes"][j] == expected
-                if expected == "follower_braking":
-                    assert all(b[3] <= a[3] + 1e-9 for a, b in zip(prediction, prediction[1:]))
+manifest = json.loads((root / "docs/data/manifest.json").read_text())
+assert manifest["protocol"] == "six-car-circuit-v1"
+assert len(manifest["evaluation"]) == len(manifest["runs"])
+for entry, row in zip(manifest["runs"], manifest["evaluation"]):
+    run = json.loads(gzip.decompress((root / "docs/data" / entry["file"]).read_bytes()))
+    assert run["method"] == entry["method"] == row["method"]
+    assert run["seed"] == entry["seed"] == row["seed"]
+    assert run["track"]["name"] == entry["track"] == row["track"]
+    assert run["metrics"] == entry["metrics"] == row["metrics"]
+    if entry.get("execution") and run["method"] != "MPC":
+        assert run["execution"]["mode"] == entry["execution"]
+    assert run["metrics"]["mpc_solves"] == (5 if run["method"] == "SAC" else 6) * len(run["frames"])
+    states = np.asarray(run["states"])
+    assert states.shape[1:] == (6, 5) and np.isfinite(states).all()
+    assert np.isclose(run["metrics"]["duration_s"], (len(states) - 1) * run["dt"])
+    assert len(run["frames"]) in (len(states) - 1, len(states))
+    assert all(v["controller"] == "MPC" for v in run["vehicles"][1:])
+    assert run["vehicles"][0]["controller"] == run["method"]
+    for k, frame in enumerate(run["frames"]):
+        assert np.isclose(frame["time"], k * run["dt"])
+        assert len(frame["plans"]) == len(frame["commands"]) == 6
+        assert np.isfinite(frame["commands"]).all()
+        for vehicle, plan in enumerate(frame["plans"]):
+            if vehicle == 0 and run["method"] == "SAC":
+                assert plan is None
+                assert frame["references"][0] is None
+                assert run["vehicles"][0]["reference"] is None
+                continue
+            assert plan is not None
+            assert plan["opponent_ids"] == [i for i in range(6) if i != vehicle]
+            assert np.shape(plan["opponents"]) == (5, run["planner"]["intervals"] + 1, 2)
+            assert len(plan["modes"]) == 5
             if plan["success"]:
-                assert len(plan["states"]) == 13
-                for k, state in enumerate(plan["states"]):
-                    for prediction in plan["opponent_predictions"]:
-                        ellipse = ((state[0] - prediction[k][0]) / 7) ** 2 + (
-                            (state[1] - prediction[k][1]) / 3
-                        ) ** 2
-                        assert ellipse + plan["obstacle_slack"] >= 1 - 2e-4
-                assert plan["max_violation"] < 2e-4
-                assert plan["obstacle_slack"] <= 0.0802
-                assert (
-                    max(abs(a - b) for a, b in zip(plan["states"][0], run["states"][index])) < 2e-4
-                )
-        assert all(len(row) == 3 for row in run["opponents"])
-if data["kind"] == "hilepp":
-    training = data["training"]
-    assert set(data["test_seeds"]).isdisjoint(training["validation_seeds"])
-    assert min(data["test_seeds"]) >= 10000
-    assert all(episode["seed"] < 7000 for episode in training["episodes"])
-    selected = max(training["validation"], key=lambda v: v["return"])
-    assert selected["step"] == training["selected_step"]
-    assert len(data["evaluation"]) == len(data["test_seeds"]) * (
-        9 + int(bool(data.get("defense_training"))) + int(bool(data.get("defense_reference_limit")))
+                assert np.shape(plan["xy"]) == (run["planner"]["intervals"] + 1, 2)
+                np.testing.assert_allclose(plan["xy"][0], states[k, vehicle, :2], atol=2e-5)
+        assert frame["applied"] == all(p is None or p["success"] for p in frame["plans"])
+    assert not any(word in run for word in ["ghost", "audit", "scenario"])
+    print(
+        f"{entry['track']} {entry['method']} seed={entry['seed']}: {len(states) - 1} applied steps, six controller records per step"
     )
-    if data.get("defense_training"):
-        defensive = data["defense_training"]
-        assert set(data["test_seeds"]).isdisjoint(defensive["validation_seeds"])
-        assert (
-            defensive["selected_step"]
-            == max(defensive["validation"], key=lambda v: v["return"])["step"]
-        )
-        assert all(episode["seed"] < 7000 for episode in defensive["episodes"])
-    records = json.loads((docs / "data/evaluation.json").read_text())
-    assert records == data["evaluation"]
-    for scenario in data["scenarios"]:
-        for run in scenario["runs"]:
-            row = next(
-                r
-                for r in records
-                if r["scenario"] == scenario["id"]
-                and r["method"] == run["id"]
-                and r["seed"] == run["seed"]
-            )
-            assert all(row[k] == v for k, v in run["metrics"].items())
-
-
-class Page(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.ids, self.refs = [], []
-
-    def handle_starttag(self, tag, attrs):
-        values = dict(attrs)
-        if "id" in values:
-            self.ids.append(values["id"])
-        for key in ["href", "src"]:
-            if key in values:
-                self.refs.append(values[key])
-
-
-page = Page()
-page.feed((docs / "index.html").read_text())
-assert len(set(page.ids)) == len(page.ids)
-for ref in page.refs:
-    if ref.startswith("#"):
-        assert ref == "#" or ref[1:] in page.ids, ref
-    elif not urlparse(ref).scheme:
-        assert (docs / ref).is_file(), ref
-with zipfile.ZipFile(docs / "assets/source.zip") as archive:
-    assert archive.testzip() is None
-    assert any(name.endswith("pyproject.toml") for name in archive.namelist())
-    assert not any("/.venv/" in name or "/.git/" in name for name in archive.namelist())
-print(f"Validated {count} recorded replays, numerical residuals, page links, and source archive.")
+print("Recorded race data verified.")

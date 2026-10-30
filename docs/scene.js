@@ -1,180 +1,300 @@
-/* Recorded simulation with live MPC plans and separately labeled opponent assumptions. */
-(() => {
-  const lerp = (a, b, f) => a + (b - a) * f;
-  function bracket(grid, value) {
-    let lo = 0, hi = grid.length - 1;
-    value = Math.max(grid[lo], Math.min(grid[hi], value));
-    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (grid[mid] <= value) lo = mid; else hi = mid; }
-    return [lo, hi, (value - grid[lo]) / (grid[hi] - grid[lo] || 1)];
+/* Geometry-driven circuit rendering. All motion and horizons come from recorded solves. */
+(function () {
+  'use strict';
+
+  const mix = (a, b, t) => a + (b - a) * t,
+    mod = (a, b) => (a % b + b) % b;
+  class CircuitGeometry {
+    constructor(track) {
+      this.track = track;
+      this.s = track.s;
+      this.xy = track.xy;
+      this.length = track.length;
+      // Interpolate tangents as well as positions; segment-wise headings cause visible ticks.
+      const count = this.xy.length - 1;
+      this.headings = this.xy.map((point, i) => {
+        const before = this.xy[(i + count - 1) % count],
+          after = this.xy[(i + 1) % count];
+        return Math.atan2(after[1] - before[1], after[0] - before[0]);
+      });
+      for (let i = 1; i < this.headings.length; i++) {
+        this.headings[i] = this.headings[i - 1] + mod(this.headings[i] - this.headings[i - 1] + Math.PI, 2 * Math.PI) - Math.PI;
+      }
+      this.bounds = [Math.min(...this.xy.map(p => p[0])), Math.max(...this.xy.map(p => p[0])), Math.min(...this.xy.map(p => p[1])), Math.max(...this.xy.map(p => p[1]))];
+    }
+    point(s, n = 0) {
+      s = mod(s, this.length);
+      let lo = 0,
+        hi = this.s.length - 1;
+      while (hi - lo > 1) {
+        const m = lo + hi >> 1;
+        if (this.s[m] > s) hi = m;else lo = m;
+      }
+      const t = (s - this.s[lo]) / (this.s[hi] - this.s[lo]),
+        a = this.xy[lo],
+        b = this.xy[hi],
+        angle = mix(this.headings[lo], this.headings[hi], t);
+      return [mix(a[0], b[0], t) - Math.sin(angle) * n, mix(a[1], b[1], t) + Math.cos(angle) * n, angle];
+    }
+    states(run, time) {
+      const index = Math.min(run.states.length - 1, Math.floor(time / run.dt)),
+        next = Math.min(index + 1, run.states.length - 1),
+        fraction = Math.min(1, time / run.dt - index);
+      return run.states[index].map((x, i) => x.map((v, j) => mix(v, run.states[next][i][j], fraction)));
+    }
   }
-  function sample(run, time, opponent = null) {
-    const [lo, hi, f] = bracket(run.time, time);
-    const states = opponent === null ? run.states : run.opponents.map(row => row[opponent]);
-    return states[lo].map((v, i) => lerp(v, states[hi][i], f));
-  }
-  function currentPlan(run, time, dt = .25) {
-    const index = Math.min(run.plans.length - 1, Math.max(0, Math.floor((time + 1e-9) / dt)));
-    return {index, plan: run.plans[index]};
-  }
-  function interpolatePlan(states, elapsed, dt = .25) {
-    const node = Math.min(states.length - 2, Math.max(0, Math.floor(elapsed / dt)));
-    const f = Math.max(0, Math.min(1, (elapsed - node * dt) / dt));
-    return states[node].map((value, i) => lerp(value, states[node + 1][i], f));
-  }
-  function opponentAudit(run, time, opponent, horizon = 3, dt = .25) {
-    const origin = Math.floor(Math.max(0, time - 1e-8) / horizon) * horizon;
-    const plan = run.plans[Math.round(origin / dt)];
-    if (!plan || !plan.opponent_predictions?.[opponent]) return null;
-    const elapsed = Math.max(0, Math.min(horizon, time - origin));
-    return {origin, elapsed, mode: plan.opponent_modes[opponent],
-      states: plan.opponent_predictions[opponent],
-      state: interpolatePlan(plan.opponent_predictions[opponent], elapsed, dt)};
-  }
-  class DrivingScene {
-    constructor(canvas, data) {
-      this.canvas = canvas; this.ctx = canvas.getContext('2d'); this.data = data;
-      this.view = 'follow'; this.focus = null; this.resize();
-      if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => this.resize()).observe(canvas);
+  class RaceScene {
+    constructor(canvas) {
+      this.canvas = canvas;
+      this.ctx = canvas.getContext('2d');
+      this.mode = 'broadcast';
+      this.predictions = true;
+      this.focus = 0;
+      this.zoom = 1.25;
+    }
+    setRun(run) {
+      this.run = run;
+      this.geometry = new CircuitGeometry(run.track);
     }
     resize() {
-      const bounds = this.canvas.getBoundingClientRect(); this.w = bounds.width; this.h = bounds.height;
-      const ratio = Math.min(window.devicePixelRatio || 1, 2);
-      this.canvas.width = this.w * ratio; this.canvas.height = this.h * ratio;
-      this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0); this.dirty = true;
+      const box = this.canvas.getBoundingClientRect(),
+        dpr = Math.min(2, window.devicePixelRatio || 1);
+      this.width = box.width;
+      this.height = box.height;
+      if (this.canvas.width !== Math.round(box.width * dpr) || this.canvas.height !== Math.round(box.height * dpr)) {
+        this.canvas.width = Math.round(box.width * dpr);
+        this.canvas.height = Math.round(box.height * dpr);
+      }
+      this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
-    project(x, y, z = 0) {
-      const dx = x - this.focus[0], dy = y - this.focus[1];
-      return [this.w / 2 + (dx * .973 - dy * .231) * this.scale,
-        this.h * .52 - (dx * .231 + dy * .973) * this.scale * .9 - z * this.scale * .85];
-    }
-    poly(points, color) {
-      const c = this.ctx; c.beginPath();
-      points.forEach((v, i) => { const p = this.project(...v); i ? c.lineTo(...p) : c.moveTo(...p); });
-      c.closePath(); c.fillStyle = color; c.fill();
+    polygon(points, color, stroke = null, width = 1) {
+      const c = this.ctx;
+      c.beginPath();
+      points.forEach((p, i) => i ? c.lineTo(...p) : c.moveTo(...p));
+      c.closePath();
+      c.fillStyle = color;
+      c.fill();
+      if (stroke) {
+        c.strokeStyle = stroke;
+        c.lineWidth = width;
+        c.stroke();
+      }
     }
     line(points, color, width = 1, dash = []) {
-      const c = this.ctx; c.beginPath();
-      points.forEach((v, i) => { const p = this.project(...v); i ? c.lineTo(...p) : c.moveTo(...p); });
-      c.strokeStyle = color; c.lineWidth = width; c.setLineDash(dash); c.stroke(); c.setLineDash([]);
+      if (points.length < 2) return;
+      const c = this.ctx;
+      c.beginPath();
+      points.forEach((p, i) => i ? c.lineTo(...p) : c.moveTo(...p));
+      c.strokeStyle = color;
+      c.lineWidth = width;
+      c.lineJoin = 'round';
+      c.lineCap = 'round';
+      c.setLineDash(dash);
+      c.stroke();
+      c.setLineDash([]);
     }
-    label(x, y, text, color = '#526170', lift = 26) {
-      const c = this.ctx, p = this.project(x, y, 1);
-      if (p[0] < 0 || p[0] > this.w || p[1] < 0 || p[1] > this.h) return;
-      c.font = '14px sans-serif'; const width = c.measureText(text).width + 16;
-      c.fillStyle = '#fffffff2'; c.fillRect(p[0] - width / 2, p[1] - lift - 21, width, 26);
-      c.fillStyle = color; c.textAlign = 'center'; c.fillText(text, p[0], p[1] - lift - 3);
-    }
-    world(s, n = 0) {
-      const t = this.track, [a, b, f] = bracket(t.s, s);
-      const x = lerp(t.xy[a][0], t.xy[b][0], f), y = lerp(t.xy[a][1], t.xy[b][1], f);
-      const dx = lerp(t.left[a][0] - t.xy[a][0], t.left[b][0] - t.xy[b][0], f);
-      const dy = lerp(t.left[a][1] - t.xy[a][1], t.left[b][1] - t.xy[b][1], f);
-      const width = Math.hypot(dx, dy);
-      return [x + dx * n / width, y + dy * n / width];
-    }
-    pose(state) {
-      const [x, y] = this.world(state[0], state[1]), p = this.world(state[0] + .1, 0), q = this.world(state[0] - .1, 0);
-      return {x, y, heading: Math.atan2(p[1] - q[1], p[0] - q[0]) + state[2]};
-    }
-    box(x,y,length,width,height,color,heading=0){const sc=Math.cos(heading),sn=Math.sin(heading),p=(u,v,z)=>[x+u*sc-v*sn,y+u*sn+v*sc,z];
-      this.poly([p(-length/2,-width/2,0),p(length/2,-width/2,0),p(length/2,-width/2,height),p(-length/2,-width/2,height)],color);
-      this.poly([p(length/2,-width/2,0),p(length/2,width/2,0),p(length/2,width/2,height),p(length/2,-width/2,height)],'#526170');
-      this.poly([p(-length/2,-width/2,height),p(length/2,-width/2,height),p(length/2,width/2,height),p(-length/2,width/2,height)],color);
-      this.poly([p(-length/2,-width/2,height),p(length/2,-width/2,height),p(length/2,width/2,height),p(-length/2,width/2,height)],'#ffffff22');
-    }
-    car(state,color,ghost=false){const {x,y,heading}=state,sc=Math.cos(heading),sn=Math.sin(heading),p=(u,v,z)=>[x+u*sc-v*sn,y+u*sn+v*sc,z],c=this.ctx;
-      c.save();if(ghost)c.globalAlpha=.55;
-      this.poly([p(-2.6,-1.1,0),p(2.8,-1.1,0),p(2.8,1.3,0),p(-2.6,1.3,0)],'#26374733');
-      for(const u of [-1.4,1.35])for(const v of [-.85,.85])this.poly([p(u-.4,v-.16,.3),p(u+.4,v-.16,.3),p(u+.4,v+.16,.3),p(u-.4,v+.16,.3)],'#24323c');
-      this.poly([p(-2.3,-.85,.45),p(1.9,-.85,.45),p(2.3,-.5,.45),p(2.3,.5,.45),p(1.9,.85,.45),p(-2.3,.85,.45)],color);
-      this.poly([p(-1.3,-.8,.5),p(1.2,-.75,.5),p(.65,-.62,1.25),p(-1,-.62,1.25)],color);
-      this.poly([p(-1,-.62,1.25),p(.65,-.62,1.25),p(.65,.62,1.25),p(-1,.62,1.25)],color);
-      this.poly([p(.65,-.62,1.25),p(1.45,-.73,.5),p(1.45,.73,.5),p(.65,.62,1.25)],'#334b61');
-      this.poly([p(-.9,-.5,1.27),p(.15,-.5,1.27),p(.15,.5,1.27),p(-.9,.5,1.27)],'#263f53');
-      for(const v of [-.62,.62])this.line([p(2.05,v,.55),p(2.23,v*.6,.55)],'#fff4ce',Math.max(1,this.scale*.13));
-      if(ghost)this.line([p(-2.8,-1.3,.05),p(2.8,-1.3,.05),p(2.8,1.3,.05),p(-2.8,1.3,.05),p(-2.8,-1.3,.05)],color,1.5,[5,4]);
-      c.restore();
-    }
-    tree(x,y,h){const p=this.project(x,y);if(p[0]<-40||p[0]>this.w+40||p[1]<-40||p[1]>this.h+40)return;
-      this.poly([[x-1,y-1,0],[x+3,y-1,0],[x+4,y+1,0],[x,y+2,0]],'#7d8d7929');
-      this.poly([[x-1.5,y-1.5,.4],[x+1.5,y-1.5,.4],[x,y,h]],'#9fb29a');
-      this.poly([[x+1.5,y-1.5,.4],[x+1.5,y+1.5,.4],[x,y,h]],'#b7c7ac');
-      this.poly([[x-1.5,y-1.5,.4],[x-1.5,y+1.5,.4],[x,y,h]],'#8ea186');
-    }
-
-    road(state) {
-      const t = this.track;
-      this.poly([...t.left, ...t.right.slice().reverse()], '#dce2e4');
-      this.line(t.left, '#9eaba7', 2); this.line(t.right, '#9eaba7', 2);
-      this.line(t.xy, '#ffffff', 2, [10, 14]);
-      const start = this.view === 'follow' ? state[0] - 100 : -50;
-      const end = this.view === 'follow' ? state[0] + 150 : 600;
-      for (let s = Math.floor(start / 12) * 12; s < end; s += 12) {
-        for (const n of [-7, 7]) this.line([this.world(s, n), this.world(s + 5, n)], '#ffffff', 4);
+    render(time) {
+      if (!this.run) return;
+      this.resize();
+      const c = this.ctx,
+        w = this.width,
+        h = this.height,
+        g = this.geometry,
+        run = this.run,
+        states = g.states(run, time),
+        ego = states[this.focus];
+      const point = g.point(ego[0], ego[1]);
+      let center, angle, scale, pitch;
+      if (this.mode === 'circuit') {
+        const b = g.bounds;
+        center = [(b[0] + b[1]) / 2, (b[2] + b[3]) / 2];
+        angle = 0;
+        scale = Math.min((w - 360) / (b[1] - b[0]), (h - 90) / (b[3] - b[2]));
+        scale = Math.max(.04, scale);
+        pitch = 1;
+      } else {
+        const before = g.point(ego[0] - 45),
+          ahead = g.point(ego[0] + 65);
+        angle = this.mode === 'overhead' ? 0 : Math.atan2(ahead[1] - before[1], ahead[0] - before[0]) - .55;
+        const target = g.point(ego[0] + 22, ego[1] * .3);
+        center = [mix(point[0], target[0], .6), mix(point[1], target[1], .6)];
+        scale = (w < 650 ? Math.max(w / 75, h / 120) : Math.min(w / 155, h / 96)) * this.zoom;
+        pitch = this.mode === 'overhead' ? 1 : .72;
       }
-      for (let s = Math.floor(start / 32) * 32; s < end; s += 32) {
-        this.tree(...this.world(s, 20), 3); this.tree(...this.world(s + 12, -23), 3.5);
-      }
-      for (let s = Math.floor(start / 50) * 50; s < end; s += 50) if (Math.abs(s - state[0]) > 18) this.label(...this.world(s, -10), `${s} m`, '#64726d', 0);
-    }
-    envelope(state, color) {
-      const points = Array.from({length: 49}, (_, i) => {
-        const angle = i / 48 * Math.PI * 2;
-        return this.world(state[0] + 7 * Math.cos(angle), state[1] + 3 * Math.sin(angle));
-      });
-      this.poly(points, '#b4481912'); this.line(points, color, 1.2, [4, 5]);
-    }
-    render(scenario, run, time, {overlay = 'mpc', opponent = 0, probe = 1, envelopes = true, dt = 1 / 60} = {}) {
-      this.track = run.track;
-      const state = sample(run, time), pose = this.pose(state), c = this.ctx;
-      const midpoint = (run.track.s[0] + run.track.s.at(-1)) / 2;
-      const target = this.view === 'follow' ? this.world(state[0] + 14, 0) : this.world(midpoint, 0);
-      const desired = this.view === 'follow' ? Math.min(this.w / 112, this.h / 55) : Math.min(this.w / (run.track.s.at(-1) - run.track.s[0]), this.h / 230);
-      if (!this.focus) { this.focus = target; this.scale = desired; }
-      const blend = 1 - Math.exp(-dt / .3);
-      this.focus = this.focus.map((v, i) => lerp(v, target[i], blend)); this.scale = lerp(this.scale, desired, blend);
-      this.moving = Math.hypot(this.focus[0] - target[0], this.focus[1] - target[1]) > .01 || Math.abs(this.scale - desired) > .001;
-      c.clearRect(0, 0, this.w, this.h); c.fillStyle = '#f3f6f0'; c.fillRect(0, 0, this.w, this.h);
-      this.road(state);
-      const index = bracket(run.time, time)[0];
-      this.line(run.states.slice(Math.max(0,index-20), index+1).map(s=>this.world(s[0],s[1])).concat([[pose.x,pose.y]]), '#2166ac77', 2);
-      const current = currentPlan(run, time, this.data.dt);
-      this.lastPlan = current; this.lastAudit = null; this.lastError = null;
-      if (current.plan?.success && overlay === 'mpc') {
-        const plan = current.plan;
-        this.line(plan.states.map(s => this.world(s[0], s[1])), '#2166ac', 3);
-        const future = this.pose(interpolatePlan(plan.states, probe, this.data.dt));
-        this.car(future, '#2166ac', true);
-        this.label(future.x, future.y, `Ego plan +${probe.toFixed(1)} s`, '#2166ac', -45);
-        plan.opponent_predictions.forEach((states, i) => {
-          const p = this.pose(interpolatePlan(states, probe, this.data.dt));
-          this.line(states.map(s => this.world(s[0], s[1])), '#b4481988', i === opponent ? 2.4 : 1.5, [7,5]);
-          if (i === opponent) {
-            if (envelopes) this.envelope(interpolatePlan(states, probe, this.data.dt), '#b44819');
-            this.car(p, '#c46b39', true);
-            this.label(p.x, p.y, `Opponent ${i+1} +${probe.toFixed(1)} s`, '#a54720', 80);
+      this.scale = scale;
+      const cos = Math.cos(angle),
+        sin = Math.sin(angle);
+      this.project = (p, z = 0) => {
+        const x = p[0] - center[0],
+          y = p[1] - center[1];
+        const vx = x * cos + y * sin,
+          vy = -x * sin + y * cos;
+        const depth = this.mode === 'broadcast' ? 300 + vy * .694 - z * .72 : 300;
+        const factor = 300 / Math.max(35, depth);
+        return [w * .54 + scale * vx * factor, h * .55 - scale * (vy * pitch + z * .694) * factor];
+      };
+      c.fillStyle = '#a9b49c';
+      c.fillRect(0, 0, w, h);
+      // Stable world-space mowing bands and subtle ground grain.
+      if (this.mode !== 'circuit') {
+        for (let x = Math.floor((center[0] - 250) / 16) * 16; x < center[0] + 250; x += 16) this.polygon([[x, center[1] - 300], [x + 8, center[1] - 300], [x + 8, center[1] + 300], [x, center[1] + 300]].map(p => this.project(p)), '#a4b096');
+        for (let i = 0; i < 900; i++) {
+          const x = Math.floor(center[0] / 300) * 300 - 300 + i * 71.37 % 900,
+            y = Math.floor(center[1] / 300) * 300 - 300 + i * 43.71 % 900;
+          const p = this.project([x, y]);
+          if (p[0] > 0 && p[0] < w && p[1] > 0 && p[1] < h) {
+            c.fillStyle = i % 2 ? '#b0baa2' : '#a0ad92';
+            c.fillRect(p[0], p[1], 1.1, 1.1);
           }
-        });
-      } else if (overlay === 'audit') {
-        const audit = opponentAudit(run, time, opponent, this.data.horizon, this.data.dt);
-        this.lastAudit = audit;
-        if (audit) {
-          const predicted = this.pose(audit.state), actual = this.pose(sample(run, time, opponent));
-          this.line(audit.states.map(s => this.world(s[0],s[1])), '#b44819', 2, [7,5]);
-          this.car(predicted, '#c46b39', true);
-          this.label(predicted.x, predicted.y, `Opponent ${opponent+1} · held assumption`, '#a54720', 85);
-          this.line([[predicted.x,predicted.y,1], [actual.x,actual.y,1]], '#b44819', 2, [3,3]);
-          this.lastError = Math.hypot(predicted.x-actual.x,predicted.y-actual.y);
         }
       }
-      for (let i=0;i<3;i++) {
-        const actual = this.pose(sample(run,time,i));
-        this.car(actual, ['#72877c','#7a8193','#95867e'][i]);
-        this.label(actual.x,actual.y,`Opponent ${i+1} · actual`,'#526170',24);
+      const chunks = [];
+      let chunk = [];
+      for (let i = 0; i < g.s.length; i++) {
+        const p = g.xy[i],
+          near = this.mode === 'circuit' || Math.hypot(p[0] - center[0], p[1] - center[1]) < 290;
+        if (near) chunk.push(i);else if (chunk.length) {
+          chunks.push(chunk);
+          chunk = [];
+        }
       }
-      this.car(pose, '#2166ac'); this.label(pose.x,pose.y,'Ego · actual','#2166ac',-75);
-      this.lastState=state;this.dirty=false;
+      if (chunk.length) chunks.push(chunk);
+      const edge = (i, side, extra = 0) => {
+        const base = g.point(g.s[i], side * run.track.half_width),
+          p = g.xy[i],
+          d = Math.hypot(base[0] - p[0], base[1] - p[1]);
+        return [base[0] + (base[0] - p[0]) * extra / d, base[1] + (base[1] - p[1]) * extra / d];
+      };
+      for (const indices of chunks) {
+        if (indices.length < 2) continue;
+        const strip = (a, b, extra, color) => this.polygon([...indices.map(i => this.project(edge(i, a, extra))), ...indices.slice().reverse().map(i => this.project(edge(i, b, extra)))], color);
+        strip(1, -1, 8, '#bcbab0');
+        strip(1, -1, 3.2, '#919891');
+        strip(1, -1, .7, '#454b4e');
+        strip(1, -1, 0, '#53595b');
+        if (this.mode !== 'circuit') {
+          for (const side of [-1, 1]) {
+            this.line(indices.map(i => this.project(edge(i, side, .45))), '#ecebe4', Math.max(1, scale * .17));
+            this.line(indices.map(i => this.project(edge(i, side, 7.5))), '#8a9290', scale * .35);
+            this.line(indices.map(i => this.project(edge(i, side, 7.5), .65)), '#dce0dc', scale * .15);
+            for (let j = 0; j < indices.length - 1; j++) {
+              const i = indices[j],
+                k = indices[j + 1];
+              if (Math.abs(run.track.curvature[i]) > .003) {
+                this.polygon([edge(i, side), edge(k, side), edge(k, side, 1.05), edge(i, side, 1.05)].map(p => this.project(p)), Math.floor(g.s[i] / 4) % 2 ? '#e8e5dc' : '#b95c57');
+              }
+              if (i % 7 === 0) {
+                const p = edge(i, side, 7.5);
+                this.line([this.project(p), this.project(p, 1.2)], '#747e7a', Math.max(1, scale * .08));
+              }
+            }
+          }
+          // Continuous rubber traces follow the true circuit, not synthetic lane guides.
+          for (const offset of [-.8, .8]) this.line(indices.map(i => this.project(g.point(g.s[i], offset))), '#4d5355', scale * .22);
+          for (let j = 0; j < indices.length - 1; j += 2) {
+            const i = indices[j];
+            if (i % 13 === 0) {
+              const p = g.point(g.s[i], 0);
+              const q = g.point(g.s[i] + 1.2, 0);
+              this.line([this.project(p), this.project(q)], '#666c6c', .55);
+            }
+          }
+        }
+      }
+      if (this.predictions && this.mode !== 'circuit') {
+        const frame = run.frames[Math.min(run.frames.length - 1, Math.floor(time / run.dt))],
+          plan = frame?.plans[this.focus];
+        if (plan) {
+          for (let j = 0; j < plan.opponents.length; j++) {
+            const braking = plan.modes[j] === 'follower_braking';
+            this.line(plan.opponents[j].map(p => this.project(g.point(...p))), braking ? '#fb8a9a' : '#ffd166', 1.8, braking ? [2, 6] : [7, 6]);
+          }
+          if (plan.success) {
+            const path = plan.xy.map(p => this.project(g.point(...p)));
+            this.line(path, '#123b4966', 7);
+            this.line(path, '#45d5fa', 2.6);
+            for (let k = 5; k < path.length; k += 5) {
+              const p = path[k];
+              c.beginPath();
+              c.arc(p[0], p[1], 3, 0, Math.PI * 2);
+              c.fillStyle = '#b7f3ff';
+              c.fill();
+            }
+          }
+        }
+      }
+      const ordered = states.map((state, id) => ({
+        state,
+        id,
+        p: g.point(state[0], state[1])
+      })).sort((a, b) => this.project(a.p)[1] - this.project(b.p)[1]);
+      for (const {
+        state,
+        id,
+        p
+      } of ordered) {
+        if (this.mode === 'circuit') {
+          const q = this.project(p);
+          c.beginPath();
+          c.arc(...q, id === this.focus ? 5 : 4, 0, Math.PI * 2);
+          c.fillStyle = run.vehicles[id].color;
+          c.fill();
+          continue;
+        }
+        this.car(p, p[2] + state[2], run.vehicles[id], id === this.focus, state[4]);
+      }
+    }
+    car(p, heading, vehicle, selected, steering) {
+      const c = this.ctx,
+        s = this.scale,
+        co = Math.cos(heading),
+        si = Math.sin(heading);
+      const point = (x, y, z = 0) => this.project([p[0] + co * x - si * y, p[1] + si * x + co * y], z);
+      const shape = (vertices, z, color, stroke) => this.polygon(vertices.map(([x, y]) => point(x, y, z)), color, stroke, Math.max(.6, s * .04));
+      const rect = (x, y, l, b, z, color) => shape([[x - l / 2, y - b / 2], [x + l / 2, y - b / 2], [x + l / 2, y + b / 2], [x - l / 2, y + b / 2]], z, color);
+      const q = point(0, 0);
+      if (q[0] < -40 || q[0] > this.width + 40 || q[1] < -40 || q[1] > this.height + 40) return;
+      shape([[-2.6, -1.2], [2.1, -1.2], [2.6, -.7], [2.6, 1.3], [-2.4, 1.3]], 0, '#15201f38');
+      for (const axle of [-1.5, 1.35]) for (const side of [-1, 1]) {
+        rect(axle, side * .89, .79, .34, .16, '#161d21');
+        rect(axle, side * .91, .53, .16, .28, '#323b40');
+      }
+      const body = [[-2.3, -.8], [-1.9, -.94], [1.45, -.94], [2.24, -.65], [2.3, 0], [2.24, .65], [1.45, .94], [-1.9, .94], [-2.3, .8]];
+      shape(body, .2, '#23313a');
+      const rgb = vehicle.color.slice(1).match(/../g).map(v => parseInt(v, 16)),
+        shade = k => '#' + rgb.map(v => Math.round(v * k).toString(16).padStart(2, '0')).join('');
+      for (let i = 0; i < body.length; i++) {
+        const a = body[i],
+          b = body[(i + 1) % body.length];
+        this.polygon([point(...a, .2), point(...b, .2), point(...b, .65), point(...a, .65)], shade(i < 4 ? .68 : .82));
+      }
+      shape(body, .65, vehicle.color, '#25333c');
+      rect(-.3, 0, 3.8, .19, .66, '#f0efdf');
+      rect(-.3, .29, 3.8, .07, .66, '#e9e8e0');
+      shape([[-1.05, -.66], [.5, -.68], [1.14, -.49], [1.14, .49], [.5, .68], [-1.05, .66]], .77, '#182d39');
+      shape([[-.75, -.57], [.16, -.57], [.43, -.44], [.43, .44], [.16, .57], [-.75, .57]], 1.08, vehicle.color);
+      shape([[.4, -.53], [1.06, -.43], [1.06, .43], [.4, .53]], .83, '#90b4c0');
+      this.line([point(.55, -.4, .88), point(.9, .2, .88)], '#d1e4e7', Math.max(.7, s * .04));
+      for (const side of [-1, 1]) this.polygon([point(-1.93, side * .65, .65), point(-1.93, side * .65, 1.05), point(-1.7, side * .65, 1.05), point(-1.7, side * .65, .65)], '#25323a');
+      rect(-1.93, 0, .3, 2.02, 1.05, '#25323a');
+      rect(2.06, 0, .21, 1.82, .29, '#293339');
+      for (const side of [-1, 1]) {
+        rect(1.9, side * .59, .15, .34, .57, '#fcf5d5');
+        rect(-2.16, side * .59, .12, .32, .52, '#ef685e');
+        rect(.52, side * 1.03, .28, .16, .72, '#29353d');
+      }
+      this.line([point(-1.7, -.79, .69), point(1.4, -.79, .69)], shade(1), Math.max(.5, s * .06));
+      const label = point(-.2, 0, 1.12);
+      c.font = `600 ${Math.max(8, s * .9)}px sans-serif`;
+      c.fillStyle = '#fff';
+      c.textAlign = 'center';
+      c.fillText(vehicle.number, label[0], label[1] + s * .3);
+      if (selected) {
+        const marker = point(0, 0, 3.5);
+        this.polygon([[marker[0] - 4, marker[1] - 6], [marker[0] + 4, marker[1] - 6], [marker[0], marker[1]]], '#ffffff', '#265572', 1);
+      }
     }
   }
-  window.DrivingScene = DrivingScene; window.sampleRun = sample; window.currentPlan = currentPlan; window.opponentAudit = opponentAudit; window.interpolatePlan = interpolatePlan;
+  window.CircuitGeometry = CircuitGeometry;
+  window.RaceScene = RaceScene;
 })();
