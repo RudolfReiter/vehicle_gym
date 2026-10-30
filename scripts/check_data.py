@@ -41,6 +41,17 @@ for entry, row in zip(manifest["runs"], manifest["evaluation"]):
     assert np.all(acceleration <= upper + 0.025), (
         "Applied acceleration exceeds the recorded envelope"
     )
+    for i, vehicle in enumerate(run["vehicles"]):
+        lateral = (
+            states[:, i, 3] ** 2
+            * np.tan(states[:, i, 4])
+            / (parameters.length_front + parameters.length_rear)
+        )
+        limits = vehicle["limits"]
+        excess = max(
+            0, lateral.max() - limits["lateral_max"], limits["lateral_min"] - lateral.min()
+        )
+        assert np.isclose(run["metrics"]["observed_envelopes"][i]["lateral_excess"], excess)
     assert np.isclose(run["metrics"]["duration_s"], (len(states) - 1) * run["dt"])
     assert len(run["frames"]) in (len(states) - 1, len(states))
     assert all(v["controller"] == "MPC" for v in run["vehicles"][1:])

@@ -5,11 +5,49 @@ import gzip
 import json
 from pathlib import Path
 import numpy as np
+from vehicle_models.model_kinematic import KinematicModelParameters
 from .simulator.circuit_race import PROTOCOL, VEHICLE_COLORS
 
 
 def rounded(array):
     return np.asarray(array).round(6).tolist()
+
+
+def annotate_envelopes(run):
+    """Measured state envelopes at recorded instants, separate from race completion."""
+    parameters = KinematicModelParameters()
+    wheelbase = parameters.length_front + parameters.length_rear
+    run["vehicle_model"] = dict(
+        wheelbase_m=wheelbase,
+        mass_kg=parameters.mass,
+        drag_coefficient=0.5 * parameters.drag_force_coeff * parameters.drag_area_head * 1.29,
+        rolling_force_n=parameters.mass * parameters.roll_force_coeff * 9.81,
+    )
+    states = np.asarray(run["states"])
+    envelopes = []
+    for i, vehicle in enumerate(run["vehicles"]):
+        speed, delta = states[:, i, 3], states[:, i, 4]
+        lateral = speed**2 * np.tan(delta) / wheelbase
+        limits = vehicle["limits"]
+        envelopes.append(
+            dict(
+                speed_min=float(speed.min()),
+                speed_max=float(speed.max()),
+                lateral_min=float(lateral.min()),
+                lateral_max=float(lateral.max()),
+                speed_excess=float(max(0, speed.max() - limits["speed_max"])),
+                speed_shortfall=float(max(0, limits["speed_min"] - speed.min())),
+                lateral_excess=float(
+                    max(
+                        0,
+                        lateral.max() - limits["lateral_max"],
+                        limits["lateral_min"] - lateral.min(),
+                    )
+                ),
+            )
+        )
+    run["metrics"]["observed_envelopes"] = envelopes
+    return run
 
 
 def record_race(world, seed=20000, method="MPC", controller=None, start=0.0, progress=False):
@@ -102,20 +140,22 @@ def record_race(world, seed=20000, method="MPC", controller=None, start=0.0, pro
         passed_by=sum(e["kind"] == "pass" and e["opponent"] == 0 for e in world.events),
         mpc_solves=len(solves),
     )
-    return dict(
-        protocol=PROTOCOL,
-        method=method,
-        seed=seed,
-        dt=world.config.dt,
-        horizon=world.config.dt * world.config.intervals,
-        duration_limit_s=world.max_steps * world.config.dt,
-        vehicles=vehicles,
-        states=states,
-        frames=frames,
-        events=world.events,
-        metrics=metrics,
-        track=world.track.export_circuit(),
-        planner=asdict(world.config),
+    return annotate_envelopes(
+        dict(
+            protocol=PROTOCOL,
+            method=method,
+            seed=seed,
+            dt=world.config.dt,
+            horizon=world.config.dt * world.config.intervals,
+            duration_limit_s=world.max_steps * world.config.dt,
+            vehicles=vehicles,
+            states=states,
+            frames=frames,
+            events=world.events,
+            metrics=metrics,
+            track=world.track.export_circuit(),
+            planner=asdict(world.config),
+        )
     )
 
 

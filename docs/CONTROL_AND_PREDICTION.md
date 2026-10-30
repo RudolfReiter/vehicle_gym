@@ -37,3 +37,5 @@ Cars retain unwrapped progress for ranking, while track geometry is evaluated mo
 Each recording includes per-car minimum/maximum speed and signed longitudinal/lateral acceleration bounds. Longitudinal acceleration includes drag and is a hard MPC path constraint, including the first control interval. Speed and lateral acceleration are soft. Minimum speed can relax while yielding; full braking to standstill therefore remains possible. Each observer uses the particular follower’s maximum deceleration in its assumption. The same limits are retained in all HILEPP/SAC/MPC comparisons.
 
 The replay’s `planner` block contains shared solver settings and compatibility defaults. Each `vehicles[i].limits` block is authoritative for that car’s applied envelope.
+
+Measured longitudinal and lateral acceleration are shown in the controller panel. The evaluation table reports the ego’s peak speed and lateral-acceleration excess at recorded control instants. `metrics.observed_envelopes` retains per-car speed/lateral ranges and excesses. Completing the time limit is distinct from satisfying soft state constraints; the direct SAC controller has no MPC state constraints.

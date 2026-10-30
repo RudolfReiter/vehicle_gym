@@ -44,7 +44,7 @@
     for (const record of manifest.evaluation.filter(row => manifest.kind !== "hilepp" || row.execution === actorExecution())) {
       const row = document.createElement('tr'),
         m = record.metrics;
-      for (const value of [record.track, record.method, record.seed, `${m.duration_s.toFixed(1)} s`, `${m.progress_m.toFixed(0)} m · ${m.laps.toFixed(1)} laps`, `${m.rank} / 6`, m.passes, outcome(m)]) {
+      for (const value of [record.track, record.method, record.seed, `${m.duration_s.toFixed(1)} s`, `${m.progress_m.toFixed(0)} m · ${m.laps.toFixed(1)} laps`, `${m.rank} / 6`, m.passes, `${m.observed_envelopes[0].speed_excess.toFixed(2)} m/s`, `${m.observed_envelopes[0].lateral_excess.toFixed(2)} m/s²`, outcome(m)]) {
         const cell = document.createElement('td');
         cell.textContent = value;
         row.append(cell);
@@ -365,11 +365,14 @@
       $('standings').append(button);
     });
     $('race-clock').textContent = `${Math.floor(time / 60)}:${(time % 60).toFixed(1).padStart(4, '0')}`;
-    $('race-state').textContent = time >= run.metrics.duration_s ? outcome(run.metrics) : `Seed ${run.seed} · Lap ${Math.floor(Math.max(0, states[selected][0] - run.states[0][selected][0]) / run.track.length) + 1}`;
+    $('race-state').textContent = time >= run.metrics.duration_s ? outcome(run.metrics) : `Seed ${run.seed} · Lap ${Math.floor(Math.max(0, states[selected][0]) / run.track.length) + 1}`;
     $('time-label').textContent = `${time.toFixed(1)} / ${run.metrics.duration_s.toFixed(1)} s`;
     $('timeline').value = time;
     $('controller-title').textContent = `${car.number} · ${car.controller}${car.controller === 'HILEPP' ? ' (HILEPP-II)' : ''}`;
     const entries = [['Measured speed', `${(states[selected][3] * 3.6).toFixed(1)} km/h`], ['Force', `${(frame.commands[selected][0] / 1000).toFixed(2)} kN`], ['Steering rate', `${frame.commands[selected][1].toFixed(3)} rad/s`]];
+    const physical = run.vehicle_model;
+    const speed = states[selected][3];
+    entries.push(['Longitudinal acceleration', `${((frame.commands[selected][0] - physical.drag_coefficient * speed * speed - physical.rolling_force_n) / physical.mass_kg).toFixed(2)} m/s²`], ['Lateral acceleration', `${(speed * speed * Math.tan(states[selected][4]) / physical.wheelbase_m).toFixed(2)} m/s²`]);
     if (plan) entries.push(['Target speed', `${(ref.speed * 3.6).toFixed(1)} km/h`], ['Lateral reference', `${ref.lateral.toFixed(2)} m`], ['Weights · speed / lateral', `${ref.speed_weight.toFixed(2)} / ${ref.lateral_weight.toFixed(2)}`]);
     $('controller-values').replaceChildren(valueGrid(entries));
     $('horizon-note').textContent = plan ? `Current solve at t = ${frame.time.toFixed(1)} s · ${plan.solve_ms.toFixed(1)} ms · ${plan.success ? 'accepted' : 'failed'} · obstacle slack ${plan.obstacle_slack.toExponential(1)}. ${frame.applied ? 'Only its first control input is applied.' : 'This step was not applied: the race stopped.'}` : 'Direct SAC acts on force and steering rate. This car has no MPC horizon or obstacle-prediction module.';
